@@ -401,7 +401,7 @@ function sourceRows(before, after, state) {
   return rows;
 }
 
-function codePages(pre) {
+function codePages(pre, ancestors = 0) {
   if (pre.properties['data-gap']) return [];
   if (pre.children.length !== 1 || tag(pre.children[0]) !== 'code') return undefined;
   const code = pre.children[0];
@@ -436,7 +436,7 @@ function codePages(pre) {
       if (lineEnd < 0) break;
       if (i === 99) end = start + lineEnd + 1;
     }
-    let count = 2;
+    let count = 2 + ancestors;
     let previous = [];
     for (let i = first; i < parts.length && parts[i].start < end; i++) {
       const wrappers = parts[i].wrappers;
@@ -474,34 +474,94 @@ function codePages(pre) {
   return pages;
 }
 
+function numberedList(node) {
+  if (tag(node) !== 'ol') return node;
+  let value = Number(node.properties.start ?? 1);
+  const children = node.children.map((child) => {
+    if (tag(child) !== 'li' || child.properties['data-gap']) return child;
+    value = Number(child.properties.value ?? value);
+    return { ...child, properties: { ...child.properties, value: value++ } };
+  });
+  return { ...node, children };
+}
+
+function splitCode(a, b, ancestors = 0) {
+  const whole = () => [{ before: a, after: b, code: false }];
+  if (tag(a) !== tag(b)) return whole();
+  const name = tag(a);
+  if (name === 'pre') {
+    const before = codePages(a, ancestors);
+    const after = codePages(b, ancestors);
+    const count = Math.max(before?.length || 0, after?.length || 0);
+    if (!before || !after || count <= 1) return whole();
+    return Array.from({ length: count }, (_, i) => ({ before: before[i] || gap(a), after: after[i] || gap(b), code: true }));
+  }
+  if (!['blockquote', 'div', 'ul', 'ol', 'li'].includes(name)) return whole();
+  const left = numberedList(a);
+  const right = numberedList(b);
+  const leftGap = left.properties['data-gap'];
+  const rightGap = right.properties['data-gap'];
+  const parts = [];
+  let childrenA = [];
+  let childrenB = [];
+  let hasCode = false;
+  const wrap = (node, children) => ({
+    ...node,
+    properties: children.every((child) => child.properties?.['data-gap'])
+      ? { ...node.properties, 'data-gap': true, ariaHidden: 'true' } : node.properties,
+    children,
+  });
+  const flush = () => {
+    if (!childrenA.length) return;
+    parts.push({ before: wrap(left, childrenA), after: wrap(right, childrenB), code: hasCode });
+    childrenA = [];
+    childrenB = [];
+    hasCode = false;
+  };
+  const count = Math.max(left.children.length, right.children.length);
+  for (let i = 0; i < count; i++) {
+    const x = leftGap ? gap(right.children[i]) : left.children[i];
+    const y = rightGap ? gap(left.children[i]) : right.children[i];
+    if (!x || !y) return whole();
+    for (const part of splitCode(x, y, ancestors + 1)) {
+      if (part.code && hasCode) flush();
+      childrenA.push(part.before);
+      childrenB.push(part.after);
+      hasCode ||= part.code;
+    }
+  }
+  flush();
+  return parts.some((part) => part.code) ? parts : whole();
+}
+
 function paginatedPair(a, b) {
   if (tag(a) !== tag(b)) return undefined;
   const name = tag(a);
-  if (name === 'pre') {
-    const before = codePages(a);
-    const after = codePages(b);
-    if (!before || !after || Math.max(before.length, after.length) <= 1) return undefined;
-    const pages = [];
-    for (let i = 0; i < Math.max(before.length, after.length); i++) {
-      pages.push({ before: toHtml(before[i] || gap(a)).replaceAll('\r', '&#13;'), after: toHtml(after[i] || gap(b)).replaceAll('\r', '&#13;') });
-    }
-    return { pages, pageType: 'code' };
-  }
   const table = name === 'table';
-  if (!table && name !== 'ul' && name !== 'ol') return undefined;
   if (table && [a, b].some((node) => node.children.filter((child) => tag(child) === 'tbody').length > 1)) return undefined;
-  const bodyA = table ? a.children.find((node) => tag(node) === 'tbody') : a;
-  const bodyB = table ? b.children.find((node) => tag(node) === 'tbody') : b;
+  const list = name === 'ul' || name === 'ol';
+  const bodyA = table ? a.children.find((node) => tag(node) === 'tbody') : list ? a : undefined;
+  const bodyB = table ? b.children.find((node) => tag(node) === 'tbody') : list ? b : undefined;
   const count = Math.max(bodyA?.children.length || 0, bodyB?.children.length || 0);
-  if (count <= 100) return undefined;
   const fragment = (node, body, offset) => {
     const items = (body?.children || []).slice(offset, offset + 100);
     if (!table) return { ...node, properties: { ...node.properties, ...(name === 'ol' ? { start: items.find((item) => !item.properties['data-gap'])?.properties.value ?? Number(node.properties.start ?? 1) + offset } : {}) }, children: items };
     return { ...node, children: node.children.map((child) => tag(child) === 'tbody' ? { ...child, children: items } : child) };
   };
-  const pages = [];
-  for (let offset = 0; offset < count; offset += 100) pages.push({ before: toHtml(fragment(a, bodyA, offset)), after: toHtml(fragment(b, bodyB, offset)) });
-  return { pages, itemCount: count };
+  const pairs = [];
+  if (count > 100) {
+    const left = numberedList(a);
+    const right = numberedList(b);
+    for (let offset = 0; offset < count; offset += 100) {
+      pairs.push({ before: fragment(left, table ? bodyA : left, offset), after: fragment(right, table ? bodyB : right, offset) });
+    }
+  } else pairs.push({ before: a, after: b });
+  const parts = pairs.flatMap((pair) => splitCode(pair.before, pair.after));
+  if (parts.some((part) => part.code)) {
+    return { pages: parts.map((part) => ({ before: toHtml(part.before).replaceAll('\r', '&#13;'), after: toHtml(part.after).replaceAll('\r', '&#13;') })), pageType: 'code' };
+  }
+  if (count <= 100) return undefined;
+  return { pages: pairs.map((pair) => ({ before: toHtml(pair.before), after: toHtml(pair.after) })), itemCount: count };
 }
 
 export function compareMarkdown(beforeText, afterText) {
