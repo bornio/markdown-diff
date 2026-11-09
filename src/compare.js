@@ -401,9 +401,92 @@ function sourceRows(before, after, state) {
   return rows;
 }
 
+function codePages(pre) {
+  if (pre.properties['data-gap']) return [];
+  if (pre.children.length !== 1 || tag(pre.children[0]) !== 'code') return undefined;
+  const code = pre.children[0];
+  const parts = [];
+  let length = 0;
+  function collect(node, wrappers) {
+    if (node.type === 'text') {
+      if (node.value) {
+        parts.push({ value: node.value, wrappers, start: length, end: length + node.value.length });
+        length += node.value.length;
+      }
+      return true;
+    }
+    if (node.type !== 'element' || !['ins', 'del'].includes(tag(node)) ||
+        node.properties['data-edit'] !== (tag(node) === 'ins' ? 'add' : 'remove') || !node.children.length) return false;
+    return node.children.every((child) => collect(child, [...wrappers, node]));
+  }
+  if (!code.children.every((child) => collect(child, []))) return undefined;
+  if (!length) return [pre];
+
+  const value = parts.map((part) => part.value).join('');
+  const pages = [];
+  let start = 0;
+  let first = 0;
+  while (start < value.length) {
+    while (parts[first].end <= start) first++;
+    let end = Math.min(start + 16000, value.length);
+    const candidate = value.slice(start, end);
+    let lineEnd = -1;
+    for (let i = 0; i < 100; i++) {
+      lineEnd = candidate.indexOf('\n', lineEnd + 1);
+      if (lineEnd < 0) break;
+      if (i === 99) end = start + lineEnd + 1;
+    }
+    let count = 2;
+    let previous = [];
+    for (let i = first; i < parts.length && parts[i].start < end; i++) {
+      const wrappers = parts[i].wrappers;
+      let common = 0;
+      while (common < previous.length && common < wrappers.length && previous[common] === wrappers[common]) common++;
+      count += wrappers.length - common + 1;
+      if (count > 256) { end = parts[i].start; break; }
+      previous = wrappers;
+    }
+    if (end < value.length) {
+      const last = value.charCodeAt(end - 1);
+      const next = value.charCodeAt(end);
+      if ((last >= 0xd800 && last <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) ||
+          (last === 13 && next === 10)) end--;
+    }
+    const fragmentCode = { ...code, children: [] };
+    const open = [fragmentCode];
+    previous = [];
+    for (let i = first; i < parts.length && parts[i].start < end; i++) {
+      const part = parts[i];
+      let common = 0;
+      while (common < previous.length && common < part.wrappers.length && previous[common] === part.wrappers[common]) common++;
+      open.length = common + 1;
+      for (const wrapper of part.wrappers.slice(common)) {
+        const clone = { ...wrapper, children: [] };
+        open[open.length - 1].children.push(clone);
+        open.push(clone);
+      }
+      open[open.length - 1].children.push({ type: 'text', value: part.value.slice(Math.max(start, part.start) - part.start, end - part.start) });
+      previous = part.wrappers;
+    }
+    pages.push({ ...pre, children: [fragmentCode] });
+    start = end;
+  }
+  return pages;
+}
+
 function paginatedPair(a, b) {
   if (tag(a) !== tag(b)) return undefined;
   const name = tag(a);
+  if (name === 'pre') {
+    const before = codePages(a);
+    const after = codePages(b);
+    if (!before || !after || Math.max(before.length, after.length) <= 1) return undefined;
+    const pages = [];
+    for (let i = 0; i < Math.max(before.length, after.length); i++) {
+      pages.push({ before: toHtml(before[i] || gap(a)).replaceAll('\r', '&#13;'), after: toHtml(after[i] || gap(b)).replaceAll('\r', '&#13;') });
+    }
+    return { pages, pageType: 'code' };
+  }
   const table = name === 'table';
   if (!table && name !== 'ul' && name !== 'ol') return undefined;
   if (table && [a, b].some((node) => node.children.filter((child) => tag(child) === 'tbody').length > 1)) return undefined;

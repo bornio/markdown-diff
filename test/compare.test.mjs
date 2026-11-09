@@ -8,6 +8,20 @@ const text = (node) => node.type === 'text' ? node.value : (node.children || [])
 const all = (node, name) => [...(node.tagName === name ? [node] : []), ...(node.children || []).flatMap((child) => all(child, name))];
 const has = (node, key) => Object.hasOwn(node.properties || {}, key);
 const table = (rows) => `| Key | State |\n|---|---|\n${rows.map((row) => `| ${row.join(' | ')} |`).join('\n')}`;
+const fence = (value, language = 'js') => `\`\`\`${language}\n${value}\n\`\`\``;
+const codePages = (row, side) => row.pages.map((page) => all(parse(page[side]), 'code')[0]);
+
+function coverage(nodes) {
+  const runs = [];
+  function visit(node, edit = '') {
+    if (node.type === 'text') {
+      if (runs.at(-1)?.[0] === edit) runs.at(-1)[1] += node.value;
+      else runs.push([edit, node.value]);
+    } else for (const child of node.children || []) visit(child, node.properties?.dataEdit || edit);
+  }
+  for (const node of nodes) if (node) visit(node);
+  return runs;
+}
 
 test('combined column and row insertion preserves mapped row identity and pads every row', () => {
   const result = compareMarkdown(table([['x','z'], ['q','r']]), '| Key | Extra | State |\n|---|---|---|\n| x | y | z |\n| new | n | row |\n| q | s | r |');
@@ -133,6 +147,106 @@ test('ordered list pages preserve numbering and all items', () => {
   assert.equal(row.pages.length,3);
   assert.match(row.pages[1].after, /start="107"/);
   assert.match(row.pages[2].after, /Item 214/);
+});
+
+test('large fenced code pages retain text, format markers, languages and source', () => {
+  const body = Array.from({ length: 215 }, (_, i) => i % 7 ? `Line ${i} <&> 😀` : '').join('\n') + '\n\n';
+  const before = fence(body).replaceAll('\n', '\r\n');
+  const after = fence(body, 'python');
+  const result = compareMarkdown(before, after);
+  const row = result.rows[0];
+  assert.equal(row.pageType, 'code');
+  assert.ok(row.pages.length > 1);
+  for (const [side, language, original] of [['before', 'language-js', before], ['after', 'language-python', after]]) {
+    const fragments = codePages(row, side);
+    assert.equal(fragments.map(text).join(''), body);
+    assert.equal(result.source.rows.map((source) => source[side]?.text || '').join(''), original);
+    for (const [index, code] of fragments.entries()) {
+      const pre = all(parse(row.pages[index][side]), 'pre')[0];
+      assert.ok(has(pre, 'dataFormatChange'));
+      assert.deepEqual(code.properties.className, [language]);
+      assert.ok(text(code).length <= 16000);
+      assert.ok((text(code).match(/\n/g) || []).length <= 100);
+    }
+  }
+});
+
+test('code pages keep long edited text and surrogate pairs across cuts', () => {
+  const removed = 'a'.repeat(15999) + '😀b';
+  const row = compareMarkdown(fence(removed), fence('z')).rows[0];
+  assert.equal(row.pageType, 'code');
+  const before = codePages(row, 'before');
+  const after = codePages(row, 'after');
+  assert.deepEqual(coverage(before), [['remove', removed], ['', '\n']]);
+  assert.deepEqual(coverage(after), [['add', 'z'], ['', '\n']]);
+  assert.equal(text(before[0]).length, 15999);
+  assert.ok(text(before[1]).startsWith('😀'));
+  for (const code of before) {
+    const value = text(code);
+    assert.ok(value.length <= 16000);
+    assert.doesNotMatch(value, /[\uD800-\uDBFF]$|^[\uDC00-\uDFFF]/u);
+  }
+  assert.ok(has(all(parse(row.pages[1].after), 'pre')[0], 'dataGap'));
+});
+
+test('code pages bound annotation nodes without changing which text is marked', () => {
+  const before = 'keep ' + 'old shared '.repeat(100) + 'tail';
+  const after = 'keep ' + 'new shared '.repeat(100) + 'tail';
+  const row = compareMarkdown(fence(before), fence(after)).rows[0];
+  assert.equal(row.pageType, 'code');
+  const count = (node) => 1 + (node.children || []).reduce((sum, child) => sum + count(child), 0);
+  for (const [side, word, edit] of [['before', 'old', 'remove'], ['after', 'new', 'add']]) {
+    const expected = [['', 'keep ']];
+    for (let i = 0; i < 100; i++) expected.push([edit, word], ['', ' shared ']);
+    expected.at(-1)[1] += 'tail\n';
+    assert.deepEqual(coverage(codePages(row, side)), expected);
+    for (const page of row.pages) assert.ok(count(all(parse(page[side]), 'pre')[0]) <= 256);
+  }
+});
+
+test('unequal code lengths retain each side in order and pad the shorter side', () => {
+  const long = 'line\n'.repeat(215);
+  const short = 'line\n'.repeat(105);
+  for (const [before, after] of [[long, short], [short, long]]) {
+    const row = compareMarkdown(fence(before), fence(after)).rows[0];
+    assert.equal(row.pageType, 'code');
+    assert.equal(row.pages.length, 3);
+    for (const [side, expected] of [['before', before], ['after', after]]) {
+      assert.equal(codePages(row, side).filter(Boolean).map(text).join(''), expected);
+      const last = all(parse(row.pages[2][side]), 'pre')[0];
+      assert.equal(has(last, 'dataGap'), expected === short);
+    }
+  }
+});
+
+test('added and removed code pages preserve CRLF, attributes and opposite gaps', () => {
+  const body = 'x'.repeat(15999) + '\r\ntail';
+  const source = `<pre title="Example"><code class="language-js">${'x'.repeat(15999)}&#13;&#10;tail</code></pre>`;
+  for (const [before, after, side, change] of [['', source, 'after', 'add'], [source, '', 'before', 'remove']]) {
+    const result = compareMarkdown(before, after);
+    const row = result.rows[0];
+    assert.equal(row.pageType, 'code');
+    const fragments = codePages(row, side);
+    assert.equal(fragments.map(text).join(''), body);
+    assert.equal(text(fragments[0]), 'x'.repeat(15999));
+    assert.ok(text(fragments[1]).startsWith('\r\n'));
+    const opposite = side === 'before' ? 'after' : 'before';
+    for (const page of row.pages) {
+      const pre = all(parse(page[side]), 'pre')[0];
+      assert.equal(pre.properties.title, 'Example');
+      assert.equal(pre.properties.dataChange, change);
+      assert.ok(has(all(parse(page[opposite]), 'pre')[0], 'dataGap'));
+    }
+    assert.equal(result.source.rows.map((source) => source[side]?.text || '').join(''), source);
+  }
+});
+
+test('small code and unsupported nested markup keep the whole-row representation', () => {
+  assert.equal(compareMarkdown(fence('short'), fence('short')).rows[0].pages, undefined);
+  const source = `<pre><code><em>${'line\n'.repeat(101)}</em></code></pre>`;
+  const row = compareMarkdown(source, source).rows[0];
+  assert.equal(row.pages, undefined);
+  assert.equal(text(all(parse(row.before), 'code')[0]), 'line\n'.repeat(101));
 });
 
 test('headerless raw tables retain their widest rows and caption', () => {
