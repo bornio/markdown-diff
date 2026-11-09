@@ -131,7 +131,7 @@ export function createComparisonView(container, chrome) {
       if (pager) {
         back.setAttribute('aria-disabled', String(page === 0));
         next.setAttribute('aria-disabled', String(page === row.pages.length - 1));
-        range.textContent = `Rows ${page * 100 + 1}–${Math.min((page + 1) * 100, row.itemCount)} of ${row.itemCount}`;
+        range.textContent = row.pageType === 'code' ? `Part ${page + 1} of ${row.pages.length}` : `Rows ${page * 100 + 1}–${Math.min((page + 1) * 100, row.itemCount)} of ${row.itemCount}`;
       }
     };
     if (row.pages) {

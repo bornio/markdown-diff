@@ -169,7 +169,7 @@ function align(a, b, state, options = {}) {
   return pairs;
 }
 
-const shape = (node) => JSON.stringify(node.type === 'text' ? '' : [tag(node), node.properties, (node.children || []).map((child) => shape(child))]);
+const shape = (node) => node.type === 'text' ? '' : [tag(node), node.properties, (node.children || []).map((child) => shape(child))];
 function annotateText(node, intervals, offset = { value: 0 }) {
   if (!node.children) return;
   node.children = node.children.flatMap((child) => {
@@ -198,7 +198,7 @@ function wordEdits(before, after, state) {
 function highlight(a, b, state) {
   const before = nodeText(a);
   const after = nodeText(b);
-  if (shape(a) !== shape(b)) {
+  if (JSON.stringify(shape(a)) !== JSON.stringify(shape(b))) {
     a.properties['data-format-change'] = true;
     b.properties['data-format-change'] = true;
   }
@@ -401,24 +401,167 @@ function sourceRows(before, after, state) {
   return rows;
 }
 
+function codePages(pre, ancestors = 0) {
+  if (pre.properties['data-gap']) return [];
+  if (pre.children.length !== 1 || tag(pre.children[0]) !== 'code') return undefined;
+  const code = pre.children[0];
+  const parts = [];
+  let length = 0;
+  function collect(node, wrappers) {
+    if (node.type === 'text') {
+      if (node.value) {
+        parts.push({ value: node.value, wrappers, start: length, end: length + node.value.length });
+        length += node.value.length;
+      }
+      return true;
+    }
+    if (node.type !== 'element' || !['ins', 'del'].includes(tag(node)) ||
+        node.properties['data-edit'] !== (tag(node) === 'ins' ? 'add' : 'remove') || !node.children.length) return false;
+    return node.children.every((child) => collect(child, [...wrappers, node]));
+  }
+  if (!code.children.every((child) => collect(child, []))) return undefined;
+  if (!length) return [pre];
+
+  const value = parts.map((part) => part.value).join('');
+  const pages = [];
+  let start = 0;
+  let first = 0;
+  while (start < value.length) {
+    while (parts[first].end <= start) first++;
+    let end = Math.min(start + 16000, value.length);
+    const candidate = value.slice(start, end);
+    let lineEnd = -1;
+    for (let i = 0; i < 100; i++) {
+      lineEnd = candidate.indexOf('\n', lineEnd + 1);
+      if (lineEnd < 0) break;
+      if (i === 99) end = start + lineEnd + 1;
+    }
+    let count = 2 + ancestors;
+    let previous = [];
+    for (let i = first; i < parts.length && parts[i].start < end; i++) {
+      const wrappers = parts[i].wrappers;
+      let common = 0;
+      while (common < previous.length && common < wrappers.length && previous[common] === wrappers[common]) common++;
+      count += wrappers.length - common + 1;
+      if (count > 256) { end = parts[i].start; break; }
+      previous = wrappers;
+    }
+    if (end < value.length) {
+      const last = value.charCodeAt(end - 1);
+      const next = value.charCodeAt(end);
+      if ((last >= 0xd800 && last <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) ||
+          (last === 13 && next === 10)) end--;
+    }
+    const fragmentCode = { ...code, children: [] };
+    const open = [fragmentCode];
+    previous = [];
+    for (let i = first; i < parts.length && parts[i].start < end; i++) {
+      const part = parts[i];
+      let common = 0;
+      while (common < previous.length && common < part.wrappers.length && previous[common] === part.wrappers[common]) common++;
+      open.length = common + 1;
+      for (const wrapper of part.wrappers.slice(common)) {
+        const clone = { ...wrapper, children: [] };
+        open[open.length - 1].children.push(clone);
+        open.push(clone);
+      }
+      open[open.length - 1].children.push({ type: 'text', value: part.value.slice(Math.max(start, part.start) - part.start, end - part.start) });
+      previous = part.wrappers;
+    }
+    pages.push({ ...pre, children: [fragmentCode] });
+    start = end;
+  }
+  return pages;
+}
+
+function numberedList(node) {
+  if (tag(node) !== 'ol') return node;
+  let value = Number(node.properties.start ?? 1);
+  const children = node.children.map((child) => {
+    if (tag(child) !== 'li' || child.properties['data-gap']) return child;
+    value = Number(child.properties.value ?? value);
+    return { ...child, properties: { ...child.properties, value: value++ } };
+  });
+  return { ...node, children };
+}
+
+function splitCode(a, b, ancestors = 0) {
+  const whole = () => [{ before: a, after: b, code: false }];
+  if (tag(a) !== tag(b)) return whole();
+  const name = tag(a);
+  if (name === 'pre') {
+    const before = codePages(a, ancestors);
+    const after = codePages(b, ancestors);
+    const count = Math.max(before?.length || 0, after?.length || 0);
+    if (!before || !after || count <= 1) return whole();
+    return Array.from({ length: count }, (_, i) => ({ before: before[i] || gap(a), after: after[i] || gap(b), code: true }));
+  }
+  if (!['blockquote', 'div', 'ul', 'ol', 'li'].includes(name)) return whole();
+  const left = numberedList(a);
+  const right = numberedList(b);
+  const leftGap = left.properties['data-gap'];
+  const rightGap = right.properties['data-gap'];
+  const parts = [];
+  let childrenA = [];
+  let childrenB = [];
+  let hasCode = false;
+  const wrap = (node, children) => ({
+    ...node,
+    properties: children.every((child) => child.properties?.['data-gap'])
+      ? { ...node.properties, 'data-gap': true, ariaHidden: 'true' } : node.properties,
+    children,
+  });
+  const flush = () => {
+    if (!childrenA.length) return;
+    parts.push({ before: wrap(left, childrenA), after: wrap(right, childrenB), code: hasCode });
+    childrenA = [];
+    childrenB = [];
+    hasCode = false;
+  };
+  const count = Math.max(left.children.length, right.children.length);
+  for (let i = 0; i < count; i++) {
+    const x = leftGap ? gap(right.children[i]) : left.children[i];
+    const y = rightGap ? gap(left.children[i]) : right.children[i];
+    if (!x || !y) return whole();
+    for (const part of splitCode(x, y, ancestors + 1)) {
+      if (part.code && hasCode) flush();
+      childrenA.push(part.before);
+      childrenB.push(part.after);
+      hasCode ||= part.code;
+    }
+  }
+  flush();
+  return parts.some((part) => part.code) ? parts : whole();
+}
+
 function paginatedPair(a, b) {
   if (tag(a) !== tag(b)) return undefined;
   const name = tag(a);
   const table = name === 'table';
-  if (!table && name !== 'ul' && name !== 'ol') return undefined;
   if (table && [a, b].some((node) => node.children.filter((child) => tag(child) === 'tbody').length > 1)) return undefined;
-  const bodyA = table ? a.children.find((node) => tag(node) === 'tbody') : a;
-  const bodyB = table ? b.children.find((node) => tag(node) === 'tbody') : b;
+  const list = name === 'ul' || name === 'ol';
+  const bodyA = table ? a.children.find((node) => tag(node) === 'tbody') : list ? a : undefined;
+  const bodyB = table ? b.children.find((node) => tag(node) === 'tbody') : list ? b : undefined;
   const count = Math.max(bodyA?.children.length || 0, bodyB?.children.length || 0);
-  if (count <= 100) return undefined;
   const fragment = (node, body, offset) => {
     const items = (body?.children || []).slice(offset, offset + 100);
     if (!table) return { ...node, properties: { ...node.properties, ...(name === 'ol' ? { start: items.find((item) => !item.properties['data-gap'])?.properties.value ?? Number(node.properties.start ?? 1) + offset } : {}) }, children: items };
     return { ...node, children: node.children.map((child) => tag(child) === 'tbody' ? { ...child, children: items } : child) };
   };
-  const pages = [];
-  for (let offset = 0; offset < count; offset += 100) pages.push({ before: toHtml(fragment(a, bodyA, offset)), after: toHtml(fragment(b, bodyB, offset)) });
-  return { pages, itemCount: count };
+  const pairs = [];
+  if (count > 100) {
+    const left = numberedList(a);
+    const right = numberedList(b);
+    for (let offset = 0; offset < count; offset += 100) {
+      pairs.push({ before: fragment(left, table ? bodyA : left, offset), after: fragment(right, table ? bodyB : right, offset) });
+    }
+  } else pairs.push({ before: a, after: b });
+  const parts = pairs.flatMap((pair) => splitCode(pair.before, pair.after));
+  if (parts.some((part) => part.code)) {
+    return { pages: parts.map((part) => ({ before: toHtml(part.before).replaceAll('\r', '&#13;'), after: toHtml(part.after).replaceAll('\r', '&#13;') })), pageType: 'code' };
+  }
+  if (count <= 100) return undefined;
+  return { pages: pairs.map((pair) => ({ before: toHtml(pair.before), after: toHtml(pair.after) })), itemCount: count };
 }
 
 export function compareMarkdown(beforeText, afterText) {
@@ -430,11 +573,11 @@ export function compareMarkdown(beforeText, afterText) {
     const equal = a && b && state.fingerprint(a) === state.fingerprint(b);
     const kind = !a ? 'add' : !b ? 'remove' : equal ? 'same' : 'changed';
     const [left, right] = comparePair(a, b, state);
-    return { kind, before: toHtml(left), after: toHtml(right), ...paginatedPair(left, right) };
+    return { kind, ...(paginatedPair(left, right) || { before: toHtml(left), after: toHtml(right) }) };
   });
   const source = sourceRows(beforeText, afterText, state);
   const stats = { added: 0, removed: 0, changed: 0, unchanged: 0 };
   for (const row of source) stats[row.kind === 'add' ? 'added' : row.kind === 'remove' ? 'removed' : row.kind === 'same' ? 'unchanged' : 'changed']++;
   const warnings = [...state.warnings];
-  return { rows: pairs, rendered: { before: pairs.map((row) => row.before).join(''), after: pairs.map((row) => row.after).join('') }, source: { rows: source }, stats, precision: { level: warnings.length ? 'coarse' : 'word', warnings } };
+  return { rows: pairs, source: { rows: source }, stats, precision: { level: warnings.length ? 'coarse' : 'word', warnings } };
 }
