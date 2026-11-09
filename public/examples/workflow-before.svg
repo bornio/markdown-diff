@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 100" width="520" height="100" role="img" aria-labelledby="title">
+  <title id="title">Draft to Publish</title>
+  <rect width="520" height="100" rx="8" fill="#1c1e22"/>
+  <g fill="#e8ecf2" font-family="system-ui,sans-serif" font-size="16" text-anchor="middle">
+    <rect x="24" y="24" width="176" height="52" rx="6" fill="none" stroke="#8795a9" stroke-width="2"/>
+    <text x="112" y="56">Draft</text>
+    <path d="M212 50H308m-10-9 10 9-10 9" fill="none" stroke="#8795a9" stroke-width="2"/>
+    <rect x="320" y="24" width="176" height="52" rx="6" fill="none" stroke="#8795a9" stroke-width="2"/>
+    <text x="408" y="56">Publish</text>
+  </g>
+</svg>

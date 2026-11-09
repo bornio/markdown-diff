@@ -1,0 +1,198 @@
+import './style.css';
+import './theme.js';
+import { example } from './example.js';
+import { createComparisonView } from './view.js';
+
+const $ = (selector) => document.querySelector(selector);
+const state = {
+  pair: { before: null, after: null }, view: 'rendered', requestId: 0,
+  selectionId: 0, readIds: { before: 0, after: 0 }, worker: null,
+  timeout: null, result: null, phase: 'empty', selectionNotice: '',
+};
+const comparison = $('#comparison');
+const status = $('#status');
+const notice = $('#notice');
+const display = createComparisonView(comparison, $('#comparison-chrome'));
+let keyboard = false;
+document.addEventListener('keydown', () => { keyboard = true; }, true);
+document.addEventListener('pointerdown', () => { keyboard = false; }, true);
+
+function cancelWorker() {
+  state.worker?.terminate();
+  state.worker = null;
+  clearTimeout(state.timeout);
+  state.timeout = null;
+  state.requestId++;
+}
+function message(text, error = false) {
+  const combined = [state.selectionNotice, text].filter(Boolean).join(' ');
+  notice.textContent = combined;
+  notice.hidden = !combined;
+  notice.classList.toggle('error', error);
+}
+function updateChrome() {
+  for (const side of ['before', 'after']) {
+    const name = $(`#${side}-name`);
+    name.textContent = state.pair[side]?.name || 'Empty document';
+    name.title = state.pair[side]?.name || 'Empty document';
+    name.classList.toggle('loaded', !!state.pair[side]);
+  }
+  const loaded = !!(state.pair.before || state.pair.after);
+  $('#swap').disabled = !loaded;
+  $('#clear').disabled = !loaded && state.phase !== 'reading';
+  const empty = $('#empty');
+  const moveFocus = keyboard && empty.contains(document.activeElement) && (loaded || state.phase === 'reading');
+  empty.hidden = loaded || state.phase === 'reading';
+  comparison.hidden = !loaded;
+  comparison.setAttribute('aria-busy', String(state.phase === 'working' || state.phase === 'reading'));
+  if (moveFocus) (loaded ? comparison : $('.file-browse[data-side=before]')).focus({ preventScroll: true });
+  $('.status-bar').classList.toggle('busy', state.phase === 'working' || state.phase === 'reading');
+  $('#rendered-view').setAttribute('aria-pressed', String(state.view === 'rendered'));
+  $('#source-view').setAttribute('aria-pressed', String(state.view === 'source'));
+}
+function startComparison() {
+  cancelWorker();
+  message('');
+  state.result = null;
+  state.phase = 'working';
+  display.reset();
+  status.textContent = 'Comparing files…';
+  $('#stats').textContent = '';
+  updateChrome();
+  const requestId = state.requestId;
+  const worker = new Worker(new URL('./compare.worker.js', import.meta.url), { type: 'module' });
+  state.worker = worker;
+  const fail = (text) => {
+    if (requestId !== state.requestId) return;
+    cancelWorker();
+    state.phase = 'error';
+    status.textContent = 'Comparison stopped';
+    message(`${text} Your selected files are kept. Choose another file or try swapping the sides.`, true);
+    updateChrome();
+  };
+  worker.onmessage = ({ data }) => {
+    if (data.requestId !== state.requestId) return;
+    worker.terminate();
+    state.worker = null;
+    clearTimeout(state.timeout);
+    if (data.status === 'error') { fail(data.message); return; }
+    state.result = data.comparison;
+    state.phase = 'ready';
+    const { added, removed, changed } = state.result.stats;
+    status.textContent = !added && !removed && !changed ? 'Files are identical' : state.result.rows.every((row) => row.kind === 'same') ? 'Source changed · rendered content is identical' : 'Comparison ready';
+    $('#stats').innerHTML = `<span class="stat-add">+${added}</span> <span class="stat-remove">−${removed}</span>${changed ? ` <span>· ${changed} changed ${changed === 1 ? 'line' : 'lines'}</span>` : ''}`;
+    message(state.result.precision.warnings.length ? `Simplified comparison. ${state.result.precision.warnings.join(' ')}` : '');
+    updateChrome();
+    display.reset(state.result, Object.fromEntries(['before', 'after'].map((side) => [side, state.pair[side]?.name || 'Empty document'])));
+    display.show(state.view);
+  };
+  worker.onerror = () => fail('Could not read this Markdown document.');
+  state.timeout = setTimeout(() => fail('This comparison exceeded 12 seconds. Split very large or deeply nested documents into smaller files.'), 12000);
+  worker.postMessage({ requestId, beforeText: state.pair.before?.text || '', afterText: state.pair.after?.text || '' });
+}
+
+async function readFiles(files, side) {
+  const chosen = [...files].slice(0, 2);
+  if (!chosen.length) return;
+  const selectionId = ++state.selectionId;
+  const targets = chosen.length === 2 ? ['before', 'after'] : [side || 'after'];
+  for (const target of targets) state.readIds[target] = selectionId;
+  cancelWorker();
+  state.phase = 'reading';
+  status.textContent = 'Reading files…';
+  state.selectionNotice = files.length > 2 ? 'Only the first two files were selected. Drop another file on either side to replace it.' : '';
+  message('');
+  updateChrome();
+  try {
+    const documents = await Promise.all(chosen.map(async (file) => {
+      if (!/\.(md|markdown|txt|mdx)$/i.test(file.name)) throw new Error('Choose a .md, .markdown, .txt, or .mdx text file.');
+      let text;
+      try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(await file.arrayBuffer()); }
+      catch { throw new Error(`${file.name} is not a UTF-8 text file.`); }
+      if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(text.slice(0, 8000))) throw new Error(`${file.name} looks like a binary file. Choose a UTF-8 text file.`);
+      return { name: file.name, text };
+    }));
+    const accepted = documents.flatMap((document, index) => state.readIds[targets[index]] === selectionId ? [[targets[index], document]] : []);
+    if (!accepted.length) return;
+    state.pair = { ...state.pair, ...Object.fromEntries(accepted) };
+    startComparison();
+  } catch (error) {
+    if (targets.every((target) => state.readIds[target] !== selectionId)) return;
+    state.phase = state.result ? 'ready' : state.pair.before || state.pair.after ? 'error' : 'empty';
+    status.textContent = 'Could not open file';
+    message(error.message, true);
+    updateChrome();
+  }
+}
+for (const side of ['before', 'after']) {
+  const input = $(`#${side}-input`);
+  input.onchange = () => { readFiles(input.files, side); input.value = ''; };
+  $(`.file-browse[data-side=${side}]`).onclick = () => input.click();
+  const target = $(`.drop-target[data-side=${side}]`);
+  target.onclick = () => input.click();
+  target.onkeydown = (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); input.click(); } };
+}
+$('#swap').onclick = () => {
+  state.selectionId++;
+  state.readIds = { before: state.selectionId, after: state.selectionId };
+  state.pair = { before: state.pair.after, after: state.pair.before };
+  startComparison();
+};
+$('#clear').onclick = () => {
+  const moveFocus = keyboard && document.activeElement === $('#clear');
+  state.selectionId++;
+  state.readIds = { before: state.selectionId, after: state.selectionId };
+  cancelWorker();
+  state.pair = { before: null, after: null };
+  state.result = null;
+  state.phase = 'empty';
+  display.reset();
+  state.selectionNotice = '';
+  status.textContent = 'Ready when you are';
+  $('#stats').textContent = '';
+  message('');
+  updateChrome();
+  if (moveFocus) $('.drop-target[data-side=before]').focus();
+};
+for (const view of ['rendered', 'source']) $(`#${view}-view`).onclick = () => {
+  if (state.view === view) return;
+  state.view = view;
+  updateChrome();
+  display.show(view);
+};
+let dragDepth = 0;
+document.addEventListener('dragenter', (event) => {
+  if (!event.dataTransfer.types.includes('Files')) return;
+  event.preventDefault();
+  dragDepth++;
+  $('#drop-overlay').hidden = !!event.target.closest('[data-side]');
+});
+document.addEventListener('dragleave', () => {
+  if (--dragDepth > 0) return;
+  dragDepth = 0;
+  $('#drop-overlay').hidden = true;
+  document.querySelectorAll('.drag-over').forEach((node) => node.classList.remove('drag-over'));
+});
+document.addEventListener('dragover', (event) => {
+  if (!event.dataTransfer.types.includes('Files')) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'copy';
+  const target = event.target.closest('[data-side]');
+  document.querySelectorAll('.drag-over').forEach((node) => node.classList.remove('drag-over'));
+  target?.classList.add('drag-over');
+  $('#drop-overlay').hidden = !!target;
+});
+document.addEventListener('drop', (event) => {
+  if (!event.dataTransfer.files.length) return;
+  event.preventDefault();
+  dragDepth = 0;
+  $('#drop-overlay').hidden = true;
+  document.querySelectorAll('.drag-over').forEach((node) => node.classList.remove('drag-over'));
+  readFiles(event.dataTransfer.files, event.target.closest('[data-side]')?.dataset.side);
+});
+
+if (location.pathname.replace(/\/$/, '') === `${import.meta.env.BASE_URL}example`) {
+  document.title = 'Markdown Diff example';
+  state.pair = structuredClone(example);
+  startComparison();
+}
