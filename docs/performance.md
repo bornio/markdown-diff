@@ -17,11 +17,13 @@ The final direct-code range was 475.9 to 509.0 ms, versus 921.1 to 971.0 ms befo
 
 The long-task observer recorded no task of 50 ms or longer in the 30 final measurement windows. The original code trials recorded tasks up to 441 ms, and the quoted-code trials up to 467 ms. These observer records do not prove exhaustive task capture. Latency ranges for the example, prose, and table workloads overlapped. Those results do not establish a speedup.
 
+A confirmation run used six trials per version and reversed the version order on alternate runs. It checked served entry and worker SHA-256 hashes against the intended builds. Direct-code medians were 966.3 ms before and 493.1 ms after. Quoted-code medians were 936.3 ms before and 543.0 ms after. One final quoted-code window recorded a 100 ms task. The other eleven final windows recorded no task at the 50 ms threshold.
+
 ## Method
 
 Production Vite builds ran on one Mac with 10 logical CPU cores. Comparison trials used normal caching and fresh input files. Timing begins at the file-drop event. It ends after rendered rows exist and two animation-frame callbacks run. It includes file reading, decoding, worker startup, comparison, message delivery, and initial DOM construction. It is a first-render observation, not a browser paint-timing or interaction-percentile metric.
 
-The six workloads were the built-in example, 100-section prose, 2,000-section prose, a 2,000-row table, large fenced code, and large quoted code. Each trial also opened Source and switched the theme. All 60 before/after trials completed without a workload error. Separate profiles identified layout of the complete visible code block as the main-thread cost. Profiled timings were excluded from the trial results.
+The six workloads were the built-in example, 100-section prose, 2,000-section prose, a 2,000-row table, large fenced code, and large quoted code. Each trial also opened Source and switched the theme. All 60 initial before/after trials completed without a workload assertion failure. The sampler does not comprehensively monitor console or network errors. Separate profiles identified layout of the complete visible code block as the main-thread cost. Profiled timings were excluded from the trial results.
 
 An isolated dynamic-example import reduced entry bytes but produced overlapping home-page paint times and slower example loading. That change was rejected.
 
