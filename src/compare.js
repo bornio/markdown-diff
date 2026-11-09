@@ -430,11 +430,11 @@ export function compareMarkdown(beforeText, afterText) {
     const equal = a && b && state.fingerprint(a) === state.fingerprint(b);
     const kind = !a ? 'add' : !b ? 'remove' : equal ? 'same' : 'changed';
     const [left, right] = comparePair(a, b, state);
-    return { kind, before: toHtml(left), after: toHtml(right), ...paginatedPair(left, right) };
+    return { kind, ...(paginatedPair(left, right) || { before: toHtml(left), after: toHtml(right) }) };
   });
   const source = sourceRows(beforeText, afterText, state);
   const stats = { added: 0, removed: 0, changed: 0, unchanged: 0 };
   for (const row of source) stats[row.kind === 'add' ? 'added' : row.kind === 'remove' ? 'removed' : row.kind === 'same' ? 'unchanged' : 'changed']++;
   const warnings = [...state.warnings];
-  return { rows: pairs, rendered: { before: pairs.map((row) => row.before).join(''), after: pairs.map((row) => row.after).join('') }, source: { rows: source }, stats, precision: { level: warnings.length ? 'coarse' : 'word', warnings } };
+  return { rows: pairs, source: { rows: source }, stats, precision: { level: warnings.length ? 'coarse' : 'word', warnings } };
 }
