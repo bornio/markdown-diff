@@ -169,7 +169,7 @@ function align(a, b, state, options = {}) {
   return pairs;
 }
 
-const shape = (node) => JSON.stringify(node.type === 'text' ? '' : [tag(node), node.properties, (node.children || []).map((child) => shape(child))]);
+const shape = (node) => node.type === 'text' ? '' : [tag(node), node.properties, (node.children || []).map((child) => shape(child))];
 function annotateText(node, intervals, offset = { value: 0 }) {
   if (!node.children) return;
   node.children = node.children.flatMap((child) => {
@@ -198,7 +198,7 @@ function wordEdits(before, after, state) {
 function highlight(a, b, state) {
   const before = nodeText(a);
   const after = nodeText(b);
-  if (shape(a) !== shape(b)) {
+  if (JSON.stringify(shape(a)) !== JSON.stringify(shape(b))) {
     a.properties['data-format-change'] = true;
     b.properties['data-format-change'] = true;
   }

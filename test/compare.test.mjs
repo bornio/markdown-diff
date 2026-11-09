@@ -80,6 +80,23 @@ test('checkbox, destination, image and formatting edits remain visible with text
   }
 });
 
+test('deep inline formatting preserves text edits and detects structural changes', () => {
+  const tags = Array.from({ length: 60 }, (_, i) => i % 2 ? 'em' : 'strong');
+  const nested = (content, names, format = false) => `<p${format ? ' data-format-change' : ''}>${names.map((name) => `<${name}>`).join('')}${content}${[...names].reverse().map((name) => `</${name}>`).join('')}</p>`;
+  const before = nested('keep old word 😀', tags) + '\r\n';
+  for (const format of [false, true]) {
+    const afterTags = [...tags];
+    if (format) afterTags[30] = 'em';
+    const after = nested('keep new word 😀', afterTags) + '\r\n';
+    const result = compareMarkdown(before, after);
+    assert.equal(result.precision.level, 'word');
+    assert.equal(rendered(result, 'before').replace(/ data-pair="\d+"/g, ''), nested('keep <del data-edit="remove">old</del> word 😀', tags, format));
+    assert.equal(rendered(result, 'after').replace(/ data-pair="\d+"/g, ''), nested('keep <ins data-edit="add">new</ins> word 😀', afterTags, format));
+    assert.equal(result.source.rows.map((row) => row.before?.text || '').join(''), before);
+    assert.equal(result.source.rows.map((row) => row.after?.text || '').join(''), after);
+  }
+});
+
 test('source rows preserve every original character and paired line numbers', () => {
   for (const [before,after] of [['one\r\n😀 two\r\nlast','one\r\n😀 new\r\nlast\n'],['','\n'],['same\n','same'],['repeat\nrepeat\n','repeat\nnew\nrepeat\n']]) {
     const result = compareMarkdown(before,after);
