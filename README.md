@@ -39,3 +39,5 @@ To use another host, deploy `dist/`. For a subdirectory, set the same base path 
 VITE_BASE_PATH=/markdown-diff/ npm run build
 VITE_BASE_PATH=/markdown-diff/ npm run preview
 ```
+
+The [performance review](docs/performance.md) records the measured workloads, results, and limits.
