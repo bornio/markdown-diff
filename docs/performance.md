@@ -15,7 +15,7 @@ The direct-code comparison uses the original `aa23ca0` revision. The quoted-code
 
 The final direct-code range was 475.9 to 509.0 ms, versus 921.1 to 971.0 ms before. The final quoted-code range was 526.5 to 576.3 ms, versus 971.5 to 1019.6 ms before. Both improvements exceed the recorded variation.
 
-No task of 50 ms or longer appeared in the 30 final measurement windows. The original code trials recorded tasks up to 441 ms, and the quoted-code trials up to 467 ms. Latency ranges for the example, prose, and table workloads overlapped. Those results do not establish a speedup.
+The long-task observer recorded no task of 50 ms or longer in the 30 final measurement windows. The original code trials recorded tasks up to 441 ms, and the quoted-code trials up to 467 ms. These observer records do not prove exhaustive task capture. Latency ranges for the example, prose, and table workloads overlapped. Those results do not establish a speedup.
 
 ## Method
 
