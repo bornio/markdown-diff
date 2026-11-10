@@ -34,6 +34,7 @@ function message(text, error = false) {
 function updateChrome() {
   for (const side of ['before', 'after']) {
     const name = $(`#${side}-name`);
+    const summary = name.querySelector('summary');
     const filename = state.pair[side]?.name || 'Empty document';
     if (name.title !== filename) {
       const segments = filenameSegments ? [...filenameSegments.segment(filename)].map(({ segment }) => segment) : [];
@@ -43,9 +44,15 @@ function updateChrome() {
       const end = document.createElement('span');
       end.className = 'file-name-end';
       end.textContent = segments.slice(-20).join('');
-      name.replaceChildren(start, end);
+      const value = document.createElement('bdi');
+      value.className = 'file-name-value';
+      value.append(start, end);
+      summary.replaceChildren(value);
       name.title = filename;
+      name.open = false;
     }
+    summary.tabIndex = state.pair[side] ? 0 : -1;
+    summary.setAttribute('aria-disabled', String(!state.pair[side]));
     name.classList.toggle('loaded', !!state.pair[side]);
   }
   const loaded = !!(state.pair.before || state.pair.after);

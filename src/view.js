@@ -98,6 +98,13 @@ export function createComparisonView(container, chrome) {
       target.dataset.diffMarker = changed.dataset.change === 'add' ? '+' : '−';
     }
     for (const table of node.querySelectorAll('table')) {
+      let columns = 1;
+      for (const row of table.rows) {
+        let width = 0;
+        for (const cell of row.cells) width += cell.colSpan;
+        columns = Math.max(columns, width);
+      }
+      table.style.setProperty('--table-columns', String(columns));
       const wrapper = document.createElement('div');
       wrapper.className = 'table-scroll';
       wrapper.dataset.scrollLabel = `${sideName(side)}, table, horizontally scrollable`;

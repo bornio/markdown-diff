@@ -290,14 +290,31 @@ main {
   color:var(--subtle)
 }
 .file-name {
-  display:flex;
+  display:block;
   min-width:0;
   font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
   color:var(--muted);
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
   font-size:12px
+}
+.file-name>summary {
+  cursor:pointer;
+  min-height:32px;
+  padding:6px 0;
+  border-radius:4px;
+  -webkit-tap-highlight-color:transparent
+}
+.file-name:not(.loaded)>summary {
+  pointer-events:none;
+  list-style:none
+}
+.file-name>summary:active {
+  background:var(--pressed)
+}
+.file-name-value {
+  display:inline-flex;
+  max-width:calc(100% - 16px);
+  vertical-align:middle;
+  white-space:nowrap
 }
 .file-name-start {
   min-width:0;
@@ -312,6 +329,17 @@ main {
   direction:rtl;
   text-align:left;
   unicode-bidi:plaintext
+}
+.file-name[open] .file-name-value,.file-name[open] .file-name-start,.file-name[open] .file-name-end {
+  display:inline;
+  max-width:none;
+  overflow:visible;
+  white-space:normal;
+  overflow-wrap:anywhere
+}
+.file-name[open] .file-name-start,.file-name[open] .file-name-end {
+  direction:inherit;
+  unicode-bidi:normal
 }
 .file-name.loaded {
   color:var(--text)
@@ -361,6 +389,7 @@ main {
   color:var(--red)
 }
 .notice {
+  overflow-wrap:anywhere;
   font-size:12px;
   line-height:1.6;
   padding:12px 30px;
@@ -583,6 +612,11 @@ footer {
   text-decoration:underline;
   text-underline-offset:3px
 }
+.document-cell a:active {
+  color:var(--heading);
+  background:var(--pressed);
+  text-decoration-thickness:2px
+}
 .document-cell ul,.document-cell ol {
   padding-left:25px
 }
@@ -662,6 +696,7 @@ footer {
   margin:22px 0
 }
 .document-cell table {
+  min-width:max(240px,calc(var(--table-columns,2) * 8rem));
   border-collapse:collapse;
   table-layout:fixed;
   width:100%;
@@ -930,6 +965,7 @@ footer {
   }
   .file-bar {
     display:grid;
+    align-content:start;
     grid-template-columns:minmax(0,1fr) max-content;
     padding:13px 12px;
     gap:8px
@@ -1033,9 +1069,6 @@ footer {
   footer>span:last-child {
     display:none
   }
-  .document-cell table {
-    min-width:240px
-  }
   .document-cell :is(td,th)[data-diff-marker] {
     padding-left:17px
   }
@@ -1112,7 +1145,7 @@ footer {
   }
 }
 @media(pointer:coarse) {
-  #theme-toggle,.tools>button,.file-browse,.table-pager button,.view-switch button,.brand,.text-button {
+  #theme-toggle,.tools>button,.file-browse,.table-pager button,.view-switch button,.brand,.text-button,.file-name>summary {
     min-height:44px
   }
   .document-cell summary {
