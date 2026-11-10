@@ -1,3 +1,5 @@
+import { partners } from './partners.js';
+
 // Presents the rendered tables of one pair row: the .table-scroll wrapper, --table-columns, and
 // proportional horizontal scroll sync between a table and its partner on the other side.
 export function presentTables(before, after, sideName) {
@@ -11,7 +13,7 @@ export function presentTables(before, after, sideName) {
       wrapper.append(table);
     }
   }
-  for (const [left, right] of pairTables(before, after)) link(left, right);
+  for (const [left, right] of partners(before, after, 'table')) link(left.parentElement, right.parentElement);
 }
 
 // A direct colgroup can only come from compareTable (the sanitizer drops authored ones).
@@ -27,24 +29,6 @@ function columnCount(table) {
   return columns;
 }
 
-// Errs toward no link: paired tables by data-pair, skipping gap partners; then unchanged tables in
-// order, outside added/removed content, only when both sides have the same number.
-function pairTables(before, after) {
-  const pairs = [];
-  const right = new Map([...after.querySelectorAll('table[data-pair]')].map((table) => [table.dataset.pair, table]));
-  for (const table of before.querySelectorAll('table[data-pair]')) {
-    const partner = right.get(table.dataset.pair);
-    if (partner && !table.hasAttribute('data-gap') && !partner.hasAttribute('data-gap')) pairs.push([table, partner]);
-  }
-  const unchanged = (cell) => [...cell.querySelectorAll('table:not([data-pair])')].filter((table) => {
-    const owner = table.parentElement.closest('[data-change],[data-gap]');
-    return !owner || !cell.contains(owner);
-  });
-  const left = unchanged(before);
-  const others = unchanged(after);
-  if (left.length === others.length) left.forEach((table, i) => pairs.push([table, others[i]]));
-  return pairs.map(([x, y]) => [x.parentElement, y.parentElement]);
-}
 
 // Scroll events from a programmatic write arrive asynchronously, so the written value is remembered
 // and the echo it causes is swallowed instead of mirrored back.

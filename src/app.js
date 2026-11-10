@@ -54,9 +54,6 @@ for (const { side, element: name } of filenames) {
     if (!state.pair[side] || (!name.open && !filenameTruncated(name))) event.preventDefault();
   });
 }
-let keyboard = false;
-document.addEventListener('keydown', () => { keyboard = true; }, true);
-document.addEventListener('pointerdown', () => { keyboard = false; }, true);
 
 function cancelWorker() {
   state.worker?.terminate();
@@ -75,7 +72,7 @@ function updateChrome() {
   for (const label of filenames) {
     const { side, element: name } = label;
     const summary = name.querySelector('summary');
-    const filename = state.pair[side]?.name || 'Empty document';
+    const filename = state.pair[side]?.name || (side === 'before' ? 'Original' : 'Changed');
     const shown = state.pair[side]?.edited ? `${filename} (edited)` : filename;
     if (label.renderedName !== shown) {
       const segments = filenameSegments ? [...filenameSegments.segment(shown)].map(({ segment }) => segment) : [];
@@ -94,31 +91,25 @@ function updateChrome() {
       name.open = false;
     }
     name.classList.toggle('loaded', !!state.pair[side]);
-    $(`.file-download[data-side=${side}]`).hidden = !(state.editing || state.pair[side]?.edited);
+    $(`.file-download[data-side=${side}]`).hidden = !(state.pair[side]?.edited || (state.editing && state.pair[side]));
   }
   const loaded = !!(state.pair.before || state.pair.after);
   const busy = state.status === 'reading' || state.status === 'working';
   $('.app').classList.toggle('has-files', loaded);
-  const head = $('.comparison-head');
-  const hideHead = !loaded && state.status !== 'reading';
-  const restoreFocus = keyboard && hideHead && head.contains(document.activeElement);
-  head.hidden = hideHead;
   $('.view-switch').hidden = !loaded;
   $('#swap').hidden = !loaded;
   $('#clear').hidden = !loaded && state.status === 'empty';
   $('#swap').disabled = !loaded;
   $('#clear').disabled = !loaded && !['reading', 'open-error', 'compare-error'].includes(state.status);
-  const empty = $('#empty');
-  const moveFocus = keyboard && empty.contains(document.activeElement) && (loaded || state.status === 'reading');
-  empty.hidden = loaded || state.status === 'reading';
+  const refocus = !state.editing && editor.contains(document.activeElement);
   comparison.hidden = !loaded || state.editing;
   editor.hidden = !state.editing;
+  if (refocus) comparison.focus({ preventScroll: true });
+  $('#example').hidden = loaded;
   comparison.tabIndex = state.view === 'source' ? 0 : -1;
   if (state.view === 'source' && loaded) comparison.title = 'Click to edit';
   else comparison.removeAttribute('title');
   comparison.setAttribute('aria-busy', String(busy));
-  if (moveFocus) (loaded ? comparison : $('.file-browse[data-side=before]')).focus({ preventScroll: true });
-  if (restoreFocus) $('.drop-target[data-side=before]').focus({ preventScroll: true });
   $('.comparison-summary').classList.toggle('busy', busy);
   const statusLabel = statusText[state.status];
   if (status.textContent !== statusLabel) status.textContent = statusLabel;
@@ -197,6 +188,12 @@ async function readFiles(files, side) {
     if (!accepted.length) return;
     syncDrafts();
     state.pair = { ...state.pair, ...Object.fromEntries(accepted) };
+    if (state.editing && chosen.length === 1) {
+      for (const [target, { text }] of accepted) drafts[target].value = text;
+      state.status = 'editing';
+      updateChrome();
+      return;
+    }
     startComparison();
   } catch (error) {
     if (targets.every((target) => state.readIds[target] !== selectionId)) return;
@@ -225,13 +222,13 @@ function startEditing(side, line) {
   state.status = 'editing';
   openEditor(side, line);
 }
+const newName = (side) => side === 'before' ? 'Original.md' : 'Changed.md';
 // Textareas turn CRLF into LF, so an untouched side is compared in that form and keeps its original text.
+const draftChanged = (side) => drafts[side].value !== (state.pair[side]?.text ?? '').replace(/\r\n?/g, '\n');
 function syncDrafts() {
   if (!state.editing) return;
-  for (const [side, textarea] of Object.entries(drafts)) {
-    const current = state.pair[side];
-    if (textarea.value === (current?.text ?? '').replace(/\r\n?/g, '\n')) continue;
-    state.pair[side] = { name: current?.name || 'New document.md', text: textarea.value, edited: true };
+  for (const side of ['before', 'after']) {
+    if (draftChanged(side)) state.pair[side] = { name: state.pair[side]?.name || newName(side), text: drafts[side].value, edited: true };
   }
 }
 function lineAt(cell) {
@@ -255,11 +252,15 @@ editor.addEventListener('keydown', (event) => {
 });
 $('#compare-edits').onclick = () => {
   syncDrafts();
+  if (!state.pair.before && !state.pair.after) return;
   startComparison();
   comparison.focus({ preventScroll: true });
 };
 window.addEventListener('beforeunload', (event) => {
-  if (state.editing || state.pair.before?.edited || state.pair.after?.edited) { event.preventDefault(); event.returnValue = true; }
+  if (state.pair.before?.edited || state.pair.after?.edited || (state.editing && (draftChanged('before') || draftChanged('after')))) {
+    event.preventDefault();
+    event.returnValue = true;
+  }
 });
 for (const { side } of filenames) {
   const input = $(`#${side}-input`);
@@ -270,13 +271,10 @@ for (const { side } of filenames) {
     updateChrome();
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([state.pair[side]?.text ?? ''], { type: 'text/markdown' }));
-    link.download = state.pair[side]?.name || 'New document.md';
+    link.download = state.pair[side]?.name || newName(side);
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href));
   };
-  const target = $(`.drop-target[data-side=${side}]`);
-  target.onclick = () => input.click();
-  target.onkeydown = (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); input.click(); } };
 }
 $('#swap').onclick = () => {
   syncDrafts();
@@ -285,10 +283,8 @@ $('#swap').onclick = () => {
   startComparison();
 };
 $('#clear').onclick = () => {
-  const moveFocus = keyboard && document.activeElement === $('#clear');
   dropPendingReads();
   cancelWorker();
-  state.editing = false;
   state.pair = { before: null, after: null };
   state.result = null;
   state.status = 'empty';
@@ -296,8 +292,7 @@ $('#clear').onclick = () => {
   state.selectionNotice = '';
   $('#stats').textContent = '';
   message('');
-  updateChrome();
-  if (moveFocus) $('.drop-target[data-side=before]').focus();
+  openEditor('before');
 };
 for (const view of ['rendered', 'source']) $(`#${view}-view`).onclick = () => {
   if (state.view === view && !state.editing) return;
@@ -354,4 +349,4 @@ if (location.pathname.replace(/\/$/, '') === `${import.meta.env.BASE_URL}example
   document.title = 'Markdown Diff example';
   state.pair = structuredClone(example);
   startComparison();
-} else updateChrome();
+} else openEditor('before');
