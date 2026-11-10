@@ -34,7 +34,7 @@
           </button>
         </div>
         </header>
-        <div class="comparison-head" hidden>
+        <div class="comparison-head">
           <div class="file-bar" data-side="before"><details class="file-name" id="before-name"><summary tabindex="-1" aria-disabled="true">No file selected</summary></details><button class="file-browse quiet icon-button" data-side="before" type="button" aria-label="Choose original file" title="Choose original file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 15v6h16v-6"/></svg></button><button class="file-download quiet icon-button" data-side="before" type="button" aria-label="Download original" title="Download original" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 3v13m-5-5 5 5 5-5M4 15v6h16v-6"/></svg></button><input id="before-input" type="file" multiple accept=".md,.markdown,.txt,.mdx" hidden></div>
           <div class="comparison-summary"><span id="status" role="status" aria-live="polite"></span><span id="stats"></span><button id="compare-edits" class="quiet" type="button" title="Compare edits (⌘/Ctrl+Enter)" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg>Compare</button></div>
           <div class="file-bar" data-side="after"><details class="file-name" id="after-name"><summary tabindex="-1" aria-disabled="true">No file selected</summary></details><button class="file-browse quiet icon-button" data-side="after" type="button" aria-label="Choose changed file" title="Choose changed file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 15v6h16v-6"/></svg></button><button class="file-download quiet icon-button" data-side="after" type="button" aria-label="Download changed" title="Download changed" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 3v13m-5-5 5 5 5-5M4 15v6h16v-6"/></svg></button><input id="after-input" type="file" multiple accept=".md,.markdown,.txt,.mdx" hidden></div>
@@ -42,18 +42,10 @@
       </div>
       <main id="main">
         <div id="notice" class="notice" hidden role="alert"></div>
-        <section id="empty" aria-label="Select Markdown files">
-          <div class="empty-intro"><h1>Compare Markdown files</h1><p>Drop two files, or paste text twice: first the original, then the changed version.</p></div>
-          <div class="drop-grid">
-            <div class="drop-target" data-side="before" tabindex="0" role="button" aria-label="Choose or drop the original Markdown file"><span class="file-icon" aria-hidden="true">↓</span><h2>Original</h2><span class="browse-label">Browse files</span></div>
-            <div class="drop-target" data-side="after" tabindex="0" role="button" aria-label="Choose or drop the changed Markdown file"><span class="file-icon" aria-hidden="true">↓</span><h2>Changed</h2><span class="browse-label">Browse files</span></div>
-          </div>
-          <div class="empty-help"><a id="example" class="text-button" href="%BASE_URL%example/">Try an example <span aria-hidden="true">→</span></a></div>
-        </section>
         <section id="comparison" aria-label="Markdown comparison" tabindex="-1" hidden></section>
-        <section id="editor" class="editor" aria-label="Edit Markdown" hidden><textarea data-side="before" spellcheck="false" aria-label="Original Markdown"></textarea><textarea data-side="after" spellcheck="false" aria-label="Changed Markdown"></textarea></section>
+        <section id="editor" class="editor" aria-label="Edit Markdown" hidden><textarea data-side="before" spellcheck="false" aria-label="Original Markdown" placeholder="Type or paste the original Markdown, or drop a file here"></textarea><textarea data-side="after" spellcheck="false" aria-label="Changed Markdown" placeholder="Type or paste the changed Markdown, or drop a file here"></textarea></section>
       </main>
-      <footer><span title="Files are never uploaded. Remote Markdown images load directly from their URLs.">Files stay in your browser</span></footer>
+      <footer><span title="Files are never uploaded. Remote Markdown images load directly from their URLs.">Files stay in your browser</span><a id="example" class="text-button" href="%BASE_URL%example/">Try an example <span aria-hidden="true">→</span></a></footer>
     </div>
     <div id="drop-overlay" hidden>Drop Markdown files to compare</div>
     <script type="module" src="/src/app.js"></script>

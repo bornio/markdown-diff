@@ -6,11 +6,11 @@ Compare Markdown files side by side, with changes inside rendered tables, lists,
 
 ## Compare files
 
-Drop two files together. The first is the original (left) and the second the changed version (right). Use the swap arrows to reverse them. Drop a file on either side to replace it, or start with one file to compare it against an empty document.
+The page opens in the editor. Type or paste the original on the left and the changed version on the right, or open or drop a file into either side, then press Compare (or ⌘/Ctrl+Enter). Dropping two files together compares them right away: the first is the original and the second the changed version. Use the swap arrows to reverse them.
 
-You can also paste text: the first paste fills the original, the next fills the changed side, and later pastes replace the changed side. Focus a side first to paste into it.
+While viewing a comparison, dropping, opening or pasting a file replaces one side and compares again; a paste fills the original first if it is empty, otherwise the changed side.
 
-To edit, click a line in Source. The comparison pauses while you type; press Compare (or ⌘/Ctrl+Enter) to update it. Edited sides are marked and can be downloaded. If a comparison fails, the editor opens so you can fix the text and try again.
+To edit after comparing, click a line in Source. The comparison pauses while you type; press Compare (or ⌘/Ctrl+Enter) to update it. Edited sides are marked and can be downloaded. If a comparison fails, the editor opens so you can fix the text and try again.
 
 Click a truncated filename to expand it, then click again to collapse it. Tab and Enter or Space work too. Names that already fit stay plain.
 

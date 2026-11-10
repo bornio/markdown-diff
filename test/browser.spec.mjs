@@ -143,6 +143,9 @@ test('deferred native reads preserve independent sides and reject stale reads af
   await page.evaluate(() => globalThis.releaseRead('hold-right.md'));
   await expect(page.locator('#after-name')).toHaveAttribute('title', 'hold-right.md');
   await page.evaluate(() => globalThis.releaseRead('hold-left.md'));
+  await expect(page.locator('#editor [data-side=before]')).toHaveValue('independent left');
+  await expect(page.locator('#editor [data-side=after]')).toHaveValue('independent right');
+  await page.locator('#compare-edits').click();
   await expect(page.locator('.document-cell[data-side=before]')).toHaveText('independent left');
   await expect(page.locator('.document-cell[data-side=after]')).toHaveText('independent right');
   await page.locator('#before-input').setInputFiles(file('hold-stale.md', 'obsolete left'));
@@ -164,15 +167,18 @@ test('deferred native reads preserve independent sides and reject stale reads af
   await expect(page.locator('.document-cell[data-side=after]')).toHaveText('original left');
 });
 
-test('pasted text fills the original, then the changed side', async ({ page }) => {
+test('pasting outside the editor fills the original, then the changed side', async ({ page }) => {
   const paste = (text) => page.evaluate((value) => {
     const clipboardData = new globalThis.DataTransfer();
     clipboardData.setData('text/plain', value);
     globalThis.document.dispatchEvent(new globalThis.ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
   }, text);
+  await page.evaluate(() => globalThis.document.activeElement.blur());
   await paste('# Title\n\nold words');
   await expect(page.locator('#before-name')).toHaveAttribute('title', 'Pasted text.md');
   await paste('# Title\n\nnew words');
+  await expect(page.locator('#editor [data-side=after]')).toHaveValue('# Title\n\nnew words');
+  await page.locator('#compare-edits').click();
   await expect(page.locator('#status')).toHaveText('Comparison ready');
   await expect(page.locator('.document-cell[data-side=before] del')).toHaveText('old');
   await expect(page.locator('.document-cell[data-side=after] ins')).toHaveText('new');
@@ -221,7 +227,7 @@ test('pastes and file reads while editing keep the drafts', async ({ page }) => 
   const draft = page.locator('#editor [data-side=after]');
   await releaseRead(page, 'hold-early.md');
   await expect(page.locator('#editor')).toBeVisible();
-  await expect(page.locator('#before-name')).toHaveAttribute('title', 'Empty document');
+  await expect(page.locator('#before-name')).toHaveAttribute('title', 'Original');
   expect(await draft.evaluate((textarea) => {
     const clipboardData = new globalThis.DataTransfer();
     clipboardData.setData('text/plain', 'pasted');
@@ -236,8 +242,9 @@ test('pastes and file reads while editing keep the drafts', async ({ page }) => 
   await draft.evaluate((textarea) => { textarea.focus(); textarea.setSelectionRange(textarea.value.length, textarea.value.length); });
   await page.keyboard.type(' typed while reading');
   await releaseRead(page, 'hold-new.md');
-  await expect(page.locator('#editor')).toBeHidden();
+  await expect(page.locator('#editor [data-side=before]')).toHaveValue('new original');
   await expect(page.locator('#before-name')).toHaveAttribute('title', 'hold-new.md');
+  await page.locator('#compare-edits').click();
   await expect(page.locator('.source-cell[data-side=after] .source-code')).toContainText('changed text typed while reading');
 });
 
@@ -257,3 +264,36 @@ test('a failed comparison opens the editor to fix and retry, and empty documents
   await expect(page.locator('#editor')).toBeVisible();
 });
 
+test('the landing page starts in the editor, and one opened file waits for Compare', async ({ page }) => {
+  await expect(page.locator('#editor [data-side=before]')).toBeFocused();
+  await expect(page.locator('#example')).toBeVisible();
+  await page.keyboard.type('# Title\n\nold words');
+  await page.locator('#after-input').setInputFiles(file('right.md', '# Title\n\nnew words'));
+  await expect(page.locator('#editor [data-side=after]')).toHaveValue('# Title\n\nnew words');
+  await expect(page.locator('#comparison')).toBeHidden();
+  await page.locator('#compare-edits').click();
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  await expect(page.locator('.document-cell[data-side=before] del')).toHaveText('old');
+  await expect(page.locator('#example')).toBeHidden();
+});
+
+
+test('opening or closing an expandable section does the same on the other side', async ({ page }) => {
+  const details = (open, body) => `<details${open ? ' open' : ''}>\n<summary>Configuration</summary>\n\n${body}\n\n</details>\n`;
+  await page.locator('#before-input').setInputFiles([file('left.md', details(false, 'old body')), file('right.md', details(true, 'new body'))]);
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  const left = page.locator('.document-cell[data-side=before] details');
+  const right = page.locator('.document-cell[data-side=after] details');
+  await expect(left).not.toHaveAttribute('open');
+  await expect(right).toHaveAttribute('open', '');
+  await left.locator('summary').click();
+  await expect(left).toHaveAttribute('open', '');
+  await expect(right).toHaveAttribute('open', '');
+  await right.locator('summary').press('Enter');
+  await expect(left).not.toHaveAttribute('open');
+  await expect(right).not.toHaveAttribute('open');
+  await page.goto('./example/');
+  await page.locator('.document-cell[data-side=after] summary', { hasText: 'example configuration' }).click();
+  await expect(page.locator('.document-cell[data-side=before] details')).toHaveAttribute('open', '');
+  await expect(page.locator('.document-cell[data-side=before] details del').first()).toBeVisible();
+});

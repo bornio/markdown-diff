@@ -1,3 +1,4 @@
+import { partners } from './partners.js';
 import { presentTables } from './tables.js';
 
 export function createComparisonView(container, chrome) {
@@ -312,6 +313,18 @@ export function createComparisonView(container, chrome) {
 
   container.addEventListener('load', () => scheduleAlignment(true), true);
   container.addEventListener('toggle', () => scheduleAlignment(true), true);
+  // Opening or closing an expandable section does the same to its partner. Only clicks are mirrored
+  // (Enter and Space on a summary click it), so an open state the author wrote still shows on load.
+  container.addEventListener('click', (event) => {
+    const details = event.target.closest('summary')?.parentElement;
+    const row = details?.closest('.pair-row');
+    if (details?.tagName !== 'DETAILS' || !row) return;
+    const [before, after] = ['before', 'after'].map((side) => row.querySelector(`:scope > .document-cell[data-side=${side}]`));
+    for (const [left, right] of partners(before, after, 'details')) {
+      if (left === details) right.open = !details.open;
+      if (right === details) left.open = !details.open;
+    }
+  });
   window.addEventListener('resize', () => {
     publishChromeHeight();
     scheduleAlignment(true);
