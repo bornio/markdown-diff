@@ -1,3 +1,5 @@
+import { presentTables } from './tables.js';
+
 export function createComparisonView(container, chrome) {
   let comparison = null;
   let names = null;
@@ -5,9 +7,13 @@ export function createComparisonView(container, chrome) {
   let frame = 0;
   let resetSizes = false;
   const views = new Map();
-  new ResizeObserver(() => {
-    document.documentElement.style.setProperty('--chrome-height', `${chrome.getBoundingClientRect().height}px`);
-  }).observe(chrome);
+  // At <=600px the chrome is display:contents (measures 0, still reports sticky) and only its toolbar sticks.
+  const chromeParts = [chrome, ...chrome.children];
+  const obscuredHeight = () => Math.max(0, ...chromeParts.map((node) =>
+    getComputedStyle(node).position === 'sticky' ? node.getBoundingClientRect().height : 0));
+  const publishChromeHeight = () => document.documentElement.style.setProperty('--chrome-height', `${obscuredHeight()}px`);
+  const chromeSize = new ResizeObserver(publishChromeHeight);
+  for (const node of chromeParts) chromeSize.observe(node);
   const nearRows = new Set();
   const activeRows = new Set();
   const measuredHeights = new WeakMap();
@@ -51,7 +57,7 @@ export function createComparisonView(container, chrome) {
   }, { rootMargin: '1200px 0px' });
 
   function sideName(side) {
-    return `${side === 'before' ? 'Left' : 'Right'}: ${names[side]}`;
+    return `${side === 'before' ? 'Original' : 'Changed'}: ${names[side]}`;
   }
 
   function cell(content, source, side, kind) {
@@ -75,6 +81,7 @@ export function createComparisonView(container, chrome) {
     const empty = source ? !content : ![...node.childNodes].some((child) =>
       child.nodeType === Node.TEXT_NODE ? child.textContent.trim().length > 0 :
         child.nodeType === Node.ELEMENT_NODE && !child.hasAttribute('data-gap'));
+    if (source && !content) node.dataset.gap = '';
     if (empty) node.setAttribute('aria-hidden', 'true');
     else {
       node.setAttribute('role', 'group');
@@ -95,12 +102,20 @@ export function createComparisonView(container, chrome) {
       const description = 'Formatting or attributes changed. Source shows the Markdown syntax.';
       node.title = description;
       node.setAttribute('aria-description', description);
-      for (const format of formats) {
-        const target = format.matches('input[type=checkbox]') ? format.closest('li') || format : format;
-        const media = target.matches('img, input') ||
-          (target.parentElement !== node && target.querySelector('img') && !target.textContent.trim());
-        target.dataset.formatCue = media ? 'media' : '';
+    }
+    const changed = '[data-edit],[data-change],[data-format-change]';
+    for (const details of node.querySelectorAll('details')) {
+      if (!details.matches(changed) && !details.querySelector(changed)) continue;
+      let summary = details.querySelector(':scope > summary');
+      if (!summary) {
+        summary = document.createElement('summary');
+        summary.textContent = 'Details';
+        details.prepend(summary);
       }
+      const chip = document.createElement('span');
+      chip.className = 'change-chip';
+      chip.innerHTML = '<span aria-hidden="true">changed</span><span class="sr-only">contains changes</span>';
+      summary.append(chip);
     }
     for (const list of node.querySelectorAll('ol')) {
       let value = list.start;
@@ -112,26 +127,12 @@ export function createComparisonView(container, chrome) {
       }
       list.style.setProperty('--list-digits', String(digits));
     }
-    for (const table of node.querySelectorAll('table')) {
-      let columns = 1;
-      for (const row of table.rows) {
-        let width = 0;
-        for (const cell of row.cells) width += cell.colSpan;
-        columns = Math.max(columns, width);
-      }
-      table.style.setProperty('--table-columns', String(columns));
-      const wrapper = document.createElement('div');
-      wrapper.className = 'table-scroll';
-      wrapper.dataset.scrollLabel = `${sideName(side)}, table, horizontally scrollable`;
-      table.before(wrapper);
-      wrapper.append(table);
-    }
     for (const pre of node.querySelectorAll('pre')) {
       pre.dataset.scrollLabel = `${sideName(side)}, code, scrollable`;
     }
     const first = node.firstElementChild;
     if (first?.matches('h1, h2, h3, h4')) node.dataset.blockKind = 'heading';
-    else if (first?.classList.contains('table-scroll')) node.dataset.blockKind = 'table';
+    else if (first?.matches('table')) node.dataset.blockKind = 'table';
   }
 
   function buildRow(row, source) {
@@ -152,6 +153,7 @@ export function createComparisonView(container, chrome) {
       else node.append(left, right);
       before = left;
       after = right;
+      if (!source) presentTables(left, right, sideName);
       node.scrollers = [...node.querySelectorAll('[data-scroll-label]')];
       if (pager) {
         back.setAttribute('aria-disabled', String(page === 0));
@@ -178,8 +180,7 @@ export function createComparisonView(container, chrome) {
         page = destination;
         fill();
         scheduleAlignment(true);
-        const obscured = getComputedStyle(chrome).position === 'sticky' ? chrome.getBoundingClientRect().height : 0;
-        const top = window.scrollY + pager.getBoundingClientRect().top - obscured - 8;
+        const top = window.scrollY + pager.getBoundingClientRect().top - obscuredHeight() - 8;
         window.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
       };
       back.onclick = () => turn(-1);
@@ -311,6 +312,9 @@ export function createComparisonView(container, chrome) {
 
   container.addEventListener('load', () => scheduleAlignment(true), true);
   container.addEventListener('toggle', () => scheduleAlignment(true), true);
-  window.addEventListener('resize', () => scheduleAlignment(true));
+  window.addEventListener('resize', () => {
+    publishChromeHeight();
+    scheduleAlignment(true);
+  });
   return { reset, show };
 }

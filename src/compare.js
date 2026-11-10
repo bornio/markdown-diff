@@ -3,6 +3,7 @@ import { fromHtml } from 'hast-util-from-html';
 import { sanitize, defaultSchema } from 'hast-util-sanitize';
 import { toHtml } from 'hast-util-to-html';
 import { diffArrays, diffLines, diffWordsWithSpace } from 'diff';
+import { markInlineFormat, markOwnFormat } from './format-marks.js';
 
 const inline = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'td', 'th', 'pre', 'summary']);
 const block = new Set(['p', 'ul', 'ol', 'table', 'blockquote', 'pre', 'div']);
@@ -170,7 +171,6 @@ function align(a, b, state, options = {}) {
   return pairs;
 }
 
-const shape = (node) => node.type === 'text' ? '' : [tag(node), node.properties, node.children.map((child) => shape(child))];
 function annotateText(node, intervals, offset = { value: 0 }) {
   if (!node.children) return;
   node.children = node.children.flatMap((child) => {
@@ -196,14 +196,38 @@ function wordEdits(before, after, state) {
   if (before.length + after.length > 20000 || Date.now() > state.deadline) return undefined;
   return diffWordsWithSpace(before, after, { maxEditLength: 1000, timeout: 20 });
 }
-function highlight(a, b, state) {
+// [start, end) offsets of text inside pre/code, where whitespace is content and edges are never trimmed.
+function literalSpans(node, literal) {
+  const spans = [];
+  let offset = 0;
+  (function walk(child, inside) {
+    if (child.type === 'text') {
+      const end = offset + child.value.length;
+      if (inside && end > offset) {
+        if (spans.at(-1)?.[1] === offset) spans.at(-1)[1] = end;
+        else spans.push([offset, end]);
+      }
+      offset = end;
+      return;
+    }
+    for (const next of child.children || []) walk(next, inside || ['pre', 'code'].includes(tag(next)));
+  })(node, literal || ['pre', 'code'].includes(tag(node)));
+  return spans;
+}
+function trimEdges(text, ranges, literal) {
+  const space = (i) => /\s/.test(text[i]) && !literal.some(([start, end]) => i >= start && i < end);
+  return ranges.map(([from, to, kind]) => {
+    if (!/\S/.test(text.slice(from, to))) return [from, to, kind];
+    while (from < to && space(from)) from++;
+    while (to > from && space(to - 1)) to--;
+    return [from, to, kind];
+  });
+}
+function highlight(a, b, state, literal = false) {
   const before = nodeText(a);
   const after = nodeText(b);
-  if (JSON.stringify(shape(a)) !== JSON.stringify(shape(b))) {
-    a.properties['data-format-change'] = true;
-    b.properties['data-format-change'] = true;
-  }
   const edits = wordEdits(before, after, state);
+  markInlineFormat(a, b, edits);
   if (!edits) {
     a.properties['data-change'] = 'remove';
     b.properties['data-change'] = 'add';
@@ -220,8 +244,8 @@ function highlight(a, b, state) {
     if (!change.added) x += change.value.length;
     if (!change.removed) y += change.value.length;
   }
-  annotateText(a, oldRanges);
-  annotateText(b, newRanges);
+  annotateText(a, trimEdges(before, oldRanges, literalSpans(a, literal)));
+  annotateText(b, trimEdges(after, newRanges, literalSpans(b, literal)));
 }
 
 function gap(node) {
@@ -343,6 +367,8 @@ function compareTable(a, b, state) {
           leftRow.children.push(oldCell);
           rightRow.children.push(newCell);
         }
+        if (i < 0) leftRow.children.at(-1).properties['data-gap'] = 'column';
+        if (j < 0) rightRow.children.at(-1).properties['data-gap'] = 'column';
       }
       left.children.push(leftRow);
       right.children.push(rightRow);
@@ -350,9 +376,9 @@ function compareTable(a, b, state) {
     leftSections.push(left);
     rightSections.push(right);
   }
-  const colgroup = () => element('colgroup', {}, columns.map(() => element('col', { span: 1 })));
-  a.children = [colgroup(), ...leftSections];
-  b.children = [colgroup(), ...rightSections];
+  const colgroup = (side) => element('colgroup', {}, columns.map((column) => element('col', column[side] < 0 ? { span: 1, 'data-gap': true } : { span: 1 })));
+  a.children = [colgroup(0), ...leftSections];
+  b.children = [colgroup(1), ...rightSections];
 }
 
 function assignListValues(list) {
@@ -364,7 +390,7 @@ function assignListValues(list) {
   }
 }
 
-function comparePair(a, b, state) {
+function comparePair(a, b, state, literal = false) {
   if (!a || !b) {
     const original = a || b;
     const actual = original.type === 'text' ? element('span', {}, [original]) : original;
@@ -378,20 +404,18 @@ function comparePair(a, b, state) {
     const left = element('span', {}, [a]);
     const right = element('span', {}, [b]);
     pairNodes(left, right, state);
-    highlight(left, right, state);
+    highlight(left, right, state, literal);
     return [left, right];
   }
   if (a.type === 'element' && b.type === 'element') {
     pairNodes(a, b, state);
     if (tag(a) !== tag(b)) { a.properties['data-change'] = 'remove'; b.properties['data-change'] = 'add'; }
     else if (tag(a) === 'table') compareTable(a, b, state);
-    else if (inline.has(tag(a)) || (tag(a) === 'li' && ![...a.children, ...b.children].some((node) => block.has(tag(node))))) highlight(a, b, state);
+    else if (inline.has(tag(a)) || (tag(a) === 'li' && ![...a.children, ...b.children].some((node) => block.has(tag(node))))) highlight(a, b, state, literal);
     else {
-      if (JSON.stringify(a.properties) !== JSON.stringify(b.properties)) {
-        a.properties['data-format-change'] = true;
-        b.properties['data-format-change'] = true;
-      }
-      const children = align(a.children, b.children, state).map(([x, y]) => comparePair(x, y, state));
+      markOwnFormat(a, b);
+      const inner = literal || ['pre', 'code'].includes(tag(a));
+      const children = align(a.children, b.children, state).map(([x, y]) => comparePair(x, y, state, inner));
       if (tag(a) === 'ol') { assignListValues(a); assignListValues(b); }
       a.children = children.map(([x]) => x);
       b.children = children.map(([, y]) => y);
