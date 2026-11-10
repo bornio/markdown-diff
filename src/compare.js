@@ -234,9 +234,19 @@ function pairNodes(a, b, state) {
   if (b?.type === 'element') b.properties['data-pair'] = pair;
 }
 
-function hasCellSpan(node, properties = ['colSpan', 'rowSpan']) {
-  return (['td', 'th'].includes(tag(node)) && properties.some((key) => node.properties[key] > 1 || (key === 'rowSpan' && node.properties[key] === 0))) ||
-    (node.children || []).some((child) => hasCellSpan(child, properties));
+function hasCellSpan(node) {
+  return (['td', 'th'].includes(tag(node)) && (node.properties.colSpan > 1 || node.properties.rowSpan > 1 || node.properties.rowSpan === 0)) ||
+    (node.children || []).some(hasCellSpan);
+}
+
+function rowSpanCrossesPage(body, pageSize) {
+  const rows = body?.children || [];
+  return rows.some((row, index) => (row.children || []).some((cell) => {
+    const span = Number(cell.properties?.rowSpan ?? 1);
+    if (span !== 0 && !(span > 1)) return false;
+    const end = span === 0 ? rows.length : Math.min(rows.length, index + span);
+    return Math.floor(index / pageSize) !== Math.floor((end - 1) / pageSize);
+  }));
 }
 
 function compareTable(a, b, state) {
@@ -544,6 +554,7 @@ function splitCode(a, b, ancestors = 0) {
 
 function paginatedPair(a, b, state) {
   if (tag(a) !== tag(b)) return undefined;
+  const pageSize = 100;
   const name = tag(a);
   const table = name === 'table';
   if (table && [a, b].some((node) => node.children.filter((child) => tag(child) === 'tbody').length > 1)) return undefined;
@@ -551,20 +562,20 @@ function paginatedPair(a, b, state) {
   const bodyA = table ? a.children.find((node) => tag(node) === 'tbody') : list ? a : undefined;
   const bodyB = table ? b.children.find((node) => tag(node) === 'tbody') : list ? b : undefined;
   const count = Math.max(bodyA?.children.length || 0, bodyB?.children.length || 0);
-  if (table && count > 100 && [bodyA, bodyB].some((node) => node && hasCellSpan(node, ['rowSpan']))) {
+  if (table && count > pageSize && [bodyA, bodyB].some((body) => rowSpanCrossesPage(body, pageSize))) {
     state.warnings.add('A table with row-spanning cells is shown whole instead of paginated to preserve its layout.');
     return undefined;
   }
   const fragment = (node, body, offset) => {
-    const items = (body?.children || []).slice(offset, offset + 100);
+    const items = (body?.children || []).slice(offset, offset + pageSize);
     if (!table) return { ...node, properties: { ...node.properties, ...(name === 'ol' ? { start: items.find((item) => !item.properties['data-gap'])?.properties.value ?? Number(node.properties.start ?? 1) + offset } : {}) }, children: items };
     return { ...node, children: node.children.map((child) => tag(child) === 'tbody' ? { ...child, children: items } : child) };
   };
   const pairs = [];
-  if (count > 100) {
+  if (count > pageSize) {
     const left = numberedList(a);
     const right = numberedList(b);
-    for (let offset = 0; offset < count; offset += 100) {
+    for (let offset = 0; offset < count; offset += pageSize) {
       pairs.push({ before: fragment(left, table ? bodyA : left, offset), after: fragment(right, table ? bodyB : right, offset) });
     }
   } else pairs.push({ before: a, after: b });
@@ -572,7 +583,7 @@ function paginatedPair(a, b, state) {
   if (parts.some((part) => part.code)) {
     return { pages: parts.map((part) => ({ before: toHtml(part.before).replaceAll('\r', '&#13;'), after: toHtml(part.after).replaceAll('\r', '&#13;') })), pageType: 'code' };
   }
-  if (count <= 100) return undefined;
+  if (count <= pageSize) return undefined;
   return { pages: pairs.map((pair) => ({ before: toHtml(pair.before), after: toHtml(pair.after) })), itemCount: count };
 }
 

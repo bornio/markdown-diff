@@ -248,6 +248,49 @@ test('column spans alone remain safely paginated with original cells and spans',
   }
 });
 
+const rowspanTable = (count, start, span) => {
+  const end = span === 0 ? count : Math.min(count, start + span);
+  const rows = Array.from({ length: count }, (_, i) => {
+    const entry = `<td>Entry ${i}</td>`;
+    if (i === start) return `<tr><td rowspan="${span}">Shared group</td>${entry}</tr>`;
+    return `<tr>${i > start && i < end ? '' : `<td>Group ${i}</td>`}${entry}</tr>`;
+  }).join('\r\n');
+  return `<table><thead><tr><th>Group</th><th>Entry</th></tr></thead><tbody>${rows}</tbody></table>`;
+};
+
+test('row spans within fixed page boundaries retain bounded complete pages', () => {
+  for (const [start, span] of [[0, 2], [98, 2], [100, 100], [999, 0], [999, 20]]) {
+    const value = rowspanTable(1000, start, span);
+    const result = compareMarkdown(value, value);
+    assert.equal(result.precision.level, 'word');
+    assert.deepEqual(result.precision.warnings, []);
+    for (const side of ['before', 'after']) {
+      const pages = result.rows[0].pages.map((page) => parse(page[side]));
+      const rows = pages.flatMap((page) => all(page, 'tbody')[0].children.filter((node) => node.tagName === 'tr'));
+      assert.equal(pages.length, 10);
+      assert.ok(pages.every((page) => all(page, 'tbody')[0].children.filter((node) => node.tagName === 'tr').length === 100));
+      assert.deepEqual(rows.map((row) => text(all(row, 'td').at(-1))), Array.from({ length: 1000 }, (_, i) => `Entry ${i}`));
+      assert.deepEqual(pages.flatMap((page) => all(page, 'td')).filter((cell) => cell.properties.rowSpan !== undefined).map((cell) => cell.properties.rowSpan), [span]);
+      assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), value);
+    }
+  }
+});
+
+test('a page-crossing span on either side keeps both original tables whole', () => {
+  const before = rowspanTable(1000, 0, 2);
+  const after = rowspanTable(1000, 99, 2);
+  for (const [left, right] of [[before, after], [after, before]]) {
+    const result = compareMarkdown(left, right);
+    assert.equal(result.rows[0].pages, undefined);
+    assert.ok(result.precision.warnings.some((warning) => warning.includes('row-spanning')));
+    for (const [side, original] of [['before', left], ['after', right]]) {
+      assert.equal(all(parse(result.rows[0][side]), 'tbody')[0].children.filter((node) => node.tagName === 'tr').length, 1000);
+      assert.doesNotMatch(result.rows[0][side], /data-gap/);
+      assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), original);
+    }
+  }
+});
+
 test('row spans confined to repeated headers preserve bounded body pages', () => {
   const rows = Array.from({ length: 101 }, (_, i) => `<tr><td>Group ${i}</td><td>Entry ${i}</td></tr>`).join('\n');
   const value = `<table><thead><tr><th rowspan="2">Group</th><th>Entry</th></tr><tr><th>Value</th></tr></thead><tbody>${rows}</tbody></table>`;
