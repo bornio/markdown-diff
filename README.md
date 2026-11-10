@@ -8,7 +8,7 @@ Compare Markdown files side by side, with changes inside rendered tables, lists,
 
 Drop two files together. The first goes on the left and the second on the right. Use the swap arrows to reverse them. Drop a file on either side to replace it, or start with one file to compare it against an empty document.
 
-Open a filename in the header to read it in full.
+Click a truncated filename to expand it, then click again to collapse it. Tab and Enter or Space work too. Names that already fit stay plain.
 
 Use the eye icon for rendered Markdown and the code icon for Source. The sun or moon switches between light and dark. Upload icons choose local files; the × clears the comparison. Each control has a hover hint and an accessible label. The app accepts UTF-8 `.md`, `.markdown`, `.txt`, and `.mdx` files. It treats `.mdx` as Markdown and does not execute components.
 

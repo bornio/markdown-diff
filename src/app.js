@@ -14,6 +14,33 @@ const comparison = $('#comparison');
 const status = $('#status');
 const notice = $('#notice');
 const display = createComparisonView(comparison, $('#comparison-chrome'));
+const filenames = [...document.querySelectorAll('.file-name')];
+let filenameFrame = 0;
+
+function filenameTruncated(name) {
+  return [...name.querySelectorAll('.file-name-value > span')].some((part) => part.scrollWidth > part.clientWidth);
+}
+function scheduleFilenames() {
+  if (filenameFrame) return;
+  filenameFrame = requestAnimationFrame(() => {
+    filenameFrame = 0;
+    for (const name of filenames) {
+      const expandable = name.classList.contains('loaded') && (name.open || filenameTruncated(name));
+      name.classList.toggle('expandable', expandable);
+      const summary = name.querySelector('summary');
+      summary.tabIndex = expandable ? 0 : -1;
+      summary.setAttribute('aria-disabled', String(!expandable));
+    }
+  });
+}
+const filenameResize = new ResizeObserver(scheduleFilenames);
+for (const name of filenames) {
+  filenameResize.observe(name);
+  name.addEventListener('toggle', scheduleFilenames);
+  name.querySelector('summary').addEventListener('click', (event) => {
+    if (!name.open && !filenameTruncated(name)) event.preventDefault();
+  });
+}
 let keyboard = false;
 document.addEventListener('keydown', () => { keyboard = true; }, true);
 document.addEventListener('pointerdown', () => { keyboard = false; }, true);
@@ -51,8 +78,6 @@ function updateChrome() {
       name.title = filename;
       name.open = false;
     }
-    summary.tabIndex = state.pair[side] ? 0 : -1;
-    summary.setAttribute('aria-disabled', String(!state.pair[side]));
     name.classList.toggle('loaded', !!state.pair[side]);
   }
   const loaded = !!(state.pair.before || state.pair.after);
@@ -79,6 +104,7 @@ function updateChrome() {
   $('#stats').hidden = ['reading', 'working'].includes(state.phase) || !state.result || !$('#stats').textContent;
   $('#rendered-view').setAttribute('aria-pressed', String(state.view === 'rendered'));
   $('#source-view').setAttribute('aria-pressed', String(state.view === 'source'));
+  scheduleFilenames();
 }
 function startComparison() {
   cancelWorker();
