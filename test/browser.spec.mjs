@@ -108,6 +108,10 @@ test('filenames, theme, paged lists and code retain content and layout in both d
   await summary.focus();
   await summary.press('Enter');
   await expect(page.locator('#before-name')).toHaveAttribute('open', '');
+  await page.locator('#source-view').click();
+  await expect(page.locator('#before-name')).toHaveAttribute('open', '');
+  await page.locator('#rendered-view').click();
+  await expect(page.locator('#before-name')).toHaveAttribute('open', '');
   await summary.click();
   await expect(page.locator('#before-name')).not.toHaveAttribute('open');
   const theme = await page.locator('html').getAttribute('data-theme');

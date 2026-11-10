@@ -26,7 +26,7 @@ const comparison = $('#comparison');
 const status = $('#status');
 const notice = $('#notice');
 const display = createComparisonView(comparison, $('#comparison-chrome'));
-const filenames = [...document.querySelectorAll('.file-name')];
+const filenames = ['before', 'after'].map((side) => ({ side, element: $(`#${side}-name`), renderedName: null }));
 let filenameFrame = 0;
 
 function filenameTruncated(name) {
@@ -36,8 +36,8 @@ function scheduleFilenames() {
   if (filenameFrame) return;
   filenameFrame = requestAnimationFrame(() => {
     filenameFrame = 0;
-    for (const name of filenames) {
-      const expandable = name.classList.contains('loaded') && (name.open || filenameTruncated(name));
+    for (const { side, element: name } of filenames) {
+      const expandable = !!state.pair[side] && (name.open || filenameTruncated(name));
       name.classList.toggle('expandable', expandable);
       const summary = name.querySelector('summary');
       summary.tabIndex = expandable ? 0 : -1;
@@ -46,11 +46,11 @@ function scheduleFilenames() {
   });
 }
 const filenameResize = new ResizeObserver(scheduleFilenames);
-for (const name of filenames) {
+for (const { side, element: name } of filenames) {
   filenameResize.observe(name);
   name.addEventListener('toggle', scheduleFilenames);
   name.querySelector('summary').addEventListener('click', (event) => {
-    if (!name.open && !filenameTruncated(name)) event.preventDefault();
+    if (!state.pair[side] || (!name.open && !filenameTruncated(name))) event.preventDefault();
   });
 }
 let keyboard = false;
@@ -71,11 +71,11 @@ function message(text, error = false) {
   notice.classList.toggle('error', error);
 }
 function updateChrome() {
-  for (const side of ['before', 'after']) {
-    const name = $(`#${side}-name`);
+  for (const label of filenames) {
+    const { side, element: name } = label;
     const summary = name.querySelector('summary');
     const filename = state.pair[side]?.name || 'Empty document';
-    if (name.title !== filename) {
+    if (label.renderedName !== filename) {
       const segments = filenameSegments ? [...filenameSegments.segment(filename)].map(({ segment }) => segment) : [];
       const start = document.createElement('span');
       start.className = 'file-name-start';
@@ -88,6 +88,7 @@ function updateChrome() {
       value.append(start, end);
       summary.replaceChildren(value);
       name.title = filename;
+      label.renderedName = filename;
       name.open = false;
     }
     name.classList.toggle('loaded', !!state.pair[side]);
@@ -153,7 +154,7 @@ function startComparison() {
     $('#stats').innerHTML = [counts, changed ? `${changed} changed ${changed === 1 ? 'line' : 'lines'}` : ''].filter(Boolean).join(' <span aria-hidden="true">·</span> ');
     message(state.result.precision.warnings.length ? `Simplified comparison. ${state.result.precision.warnings.join(' ')}` : '');
     updateChrome();
-    display.reset(state.result, Object.fromEntries(['before', 'after'].map((side) => [side, state.pair[side]?.name || 'Empty document'])));
+    display.reset(state.result, Object.fromEntries(filenames.map(({ side }) => [side, state.pair[side]?.name || 'Empty document'])));
     display.show(state.view);
   };
   worker.onerror = () => fail('Could not read this Markdown document.');
@@ -197,7 +198,7 @@ async function readFiles(files, side) {
     updateChrome();
   }
 }
-for (const side of ['before', 'after']) {
+for (const { side } of filenames) {
   const input = $(`#${side}-input`);
   input.accept = extensions.join(',');
   input.onchange = () => { readFiles(input.files, side); input.value = ''; };
