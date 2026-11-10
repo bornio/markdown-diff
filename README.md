@@ -10,6 +10,8 @@ Drop two files together. The first is the original (left) and the second the cha
 
 You can also paste text: the first paste fills the original, the next fills the changed side, and later pastes replace the changed side. Focus a side first to paste into it.
 
+To edit, click a line in Source. The comparison pauses while you type; press Compare (or ⌘/Ctrl+Enter) to update it. Edited sides are marked and can be downloaded. If a comparison fails, the editor opens so you can fix the text and try again.
+
 Click a truncated filename to expand it, then click again to collapse it. Tab and Enter or Space work too. Names that already fit stay plain.
 
 Use Rendered or Source to switch views. The sun or moon switches between light and dark. Upload icons choose local files; the × clears the comparison. Each control has a hover hint and an accessible label. The app accepts UTF-8 `.md`, `.markdown`, `.txt`, and `.mdx` files. It treats `.mdx` as Markdown and does not execute components.

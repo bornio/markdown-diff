@@ -419,6 +419,18 @@ main {
 #stats {
   white-space:nowrap
 }
+#compare-edits {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding:2px 8px;
+  font-size:12px;
+  color:var(--link)
+}
+#compare-edits svg {
+  width:14px;
+  height:14px
+}
 .stat-add {
   color:var(--green)
 }
@@ -931,6 +943,30 @@ footer {
 }
 .source-cell[data-change-cue=add]>.source-number:before {
   border-color:var(--add-marker)
+}
+.source-view .source-code {
+  cursor:text
+}
+.editor {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr)
+}
+.editor textarea {
+  height:calc(100dvh - var(--chrome-height,0px) - 2rem);
+  min-height:16rem;
+  padding:12px 22px;
+  border:0;
+  resize:none;
+  font:12px/1.8 ui-monospace,SFMono-Regular,Consolas,monospace;
+  color:var(--text);
+  background:var(--page)
+}
+.editor textarea[data-side=before] {
+  border-right:1px solid var(--border)
+}
+.editor textarea:focus-visible {
+  outline:2px solid var(--focus);
+  outline-offset:-2px
 }
 .source-code {
   white-space:pre-wrap;
