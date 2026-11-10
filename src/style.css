@@ -302,22 +302,28 @@ main {
   font-size:12px
 }
 .file-name>summary {
-  cursor:pointer;
+  cursor:text;
+  list-style:none;
   min-height:32px;
   padding:6px 0;
   border-radius:4px;
   -webkit-tap-highlight-color:transparent
 }
-.file-name:not(.loaded)>summary {
-  pointer-events:none;
-  list-style:none
+.file-name>summary::-webkit-details-marker {
+  display:none
 }
-.file-name>summary:active {
+.file-name.expandable>summary {
+  cursor:pointer
+}
+.file-name:not(.loaded)>summary {
+  pointer-events:none
+}
+.file-name.expandable>summary:active {
   background:var(--pressed)
 }
 .file-name-value {
   display:inline-flex;
-  max-width:calc(100% - 16px);
+  max-width:100%;
   vertical-align:middle;
   white-space:nowrap
 }
