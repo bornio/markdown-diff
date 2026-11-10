@@ -257,6 +257,14 @@ document.addEventListener('drop', (event) => {
   document.querySelectorAll('.drag-over').forEach((node) => node.classList.remove('drag-over'));
   readFiles(event.dataTransfer.files, event.target.closest('[data-side]')?.dataset.side);
 });
+document.addEventListener('paste', (event) => {
+  const { files } = event.clipboardData;
+  const text = event.clipboardData.getData('text/plain');
+  if (!files.length && !text) return;
+  event.preventDefault();
+  const side = document.activeElement?.closest('[data-side]')?.dataset.side || (state.pair.before ? 'after' : 'before');
+  readFiles(files.length ? files : [new File([text], 'Pasted text.md')], side);
+});
 
 if (location.pathname.replace(/\/$/, '') === `${import.meta.env.BASE_URL}example`) {
   document.title = 'Markdown Diff example';

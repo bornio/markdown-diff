@@ -153,3 +153,17 @@ test('deferred native reads preserve independent sides and reject stale reads af
   await expect(page.locator('.document-cell[data-side=before]')).toHaveText('original right');
   await expect(page.locator('.document-cell[data-side=after]')).toHaveText('original left');
 });
+
+test('pasted text fills the original, then the changed side', async ({ page }) => {
+  const paste = (text) => page.evaluate((value) => {
+    const clipboardData = new globalThis.DataTransfer();
+    clipboardData.setData('text/plain', value);
+    globalThis.document.dispatchEvent(new globalThis.ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+  }, text);
+  await paste('# Title\n\nold words');
+  await expect(page.locator('#before-name')).toHaveAttribute('title', 'Pasted text.md');
+  await paste('# Title\n\nnew words');
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  await expect(page.locator('.document-cell[data-side=before] del')).toHaveText('old');
+  await expect(page.locator('.document-cell[data-side=after] ins')).toHaveText('new');
+});
