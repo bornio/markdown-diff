@@ -52,6 +52,13 @@ test('file boundaries, status visibility, and actual Source survive success and 
   await expect(status).toHaveText('Comparison ready');
   await expect(status).toHaveClass('sr-only');
   await expect(page.locator('#stats')).toBeVisible();
+  await status.evaluate((node) => {
+    globalThis.statusWrites = 0;
+    new globalThis.MutationObserver((records) => { globalThis.statusWrites += records.length; }).observe(node, { childList: true, characterData: true, subtree: true });
+  });
+  await page.locator('#rendered-view').click();
+  await page.locator('#source-view').click();
+  expect(await page.evaluate(() => globalThis.statusWrites)).toBe(0);
   expect(await page.locator('.source-cell[data-side=after] .source-code').textContent()).toBe('<span>new & safe</span>\n');
   await expect(page.locator('.source-code span')).toHaveCount(0);
   await page.evaluate(() => {
@@ -123,13 +130,19 @@ test('filenames, theme, paged lists and code retain content and layout in both d
   await listRow.scrollIntoViewIfNeeded();
   await expect.poll(() => listRow.evaluate((row) => {
     const pairs = new Map();
+    let matched = 0;
     for (const node of row.querySelectorAll('li[data-pair]')) {
       const height = node.getBoundingClientRect().height;
+      if (height <= 0) return false;
+      const side = node.closest('.document-cell').dataset.side;
       const previous = pairs.get(node.dataset.pair);
-      if (previous !== undefined && Math.abs(previous - height) > 1) return false;
-      pairs.set(node.dataset.pair, height);
+      if (previous) {
+        if (previous.side === side || Math.abs(previous.height - height) > 1) return false;
+        pairs.delete(node.dataset.pair);
+        matched++;
+      } else pairs.set(node.dataset.pair, { side, height });
     }
-    return pairs.size > 0 && parseFloat(row.style.containIntrinsicBlockSize.split(' ').at(-1)) > 0;
+    return matched > 0 && pairs.size === 0 && parseFloat(row.style.containIntrinsicBlockSize.split(' ').at(-1)) > 0;
   })).toBe(true);
   await page.evaluate(() => globalThis.scrollTo(0, 700));
   const scroll = await page.evaluate(() => globalThis.scrollY);
@@ -142,6 +155,18 @@ test('filenames, theme, paged lists and code retain content and layout in both d
 
 test('deferred native reads preserve independent sides and reject stale reads after replace, Clear, and Swap', async ({ page }) => {
   await page.addInitScript(() => {
+    const NativeWorker = globalThis.Worker;
+    const messages = [];
+    globalThis.Worker = class extends NativeWorker {
+      constructor(...args) {
+        super(...args);
+        this.addEventListener('message', (event) => { messages.push({ worker: this, data: event.data }); });
+      }
+    };
+    globalThis.replayOldWorker = () => {
+      const { worker, data } = messages[0];
+      worker.dispatchEvent(new globalThis.MessageEvent('message', { data }));
+    };
     const native = globalThis.File.prototype.arrayBuffer;
     const pending = new Map();
     globalThis.pendingReads = () => [...pending.keys()];
@@ -181,6 +206,9 @@ test('deferred native reads preserve independent sides and reject stale reads af
   await page.locator('#before-input').setInputFiles(file('hold-swap.md', 'obsolete swap'));
   await page.locator('#swap').click();
   await page.evaluate(() => globalThis.releaseRead('hold-swap.md'));
+  await expect(page.locator('.document-cell[data-side=before]')).toHaveText('original right');
+  await expect(page.locator('.document-cell[data-side=after]')).toHaveText('original left');
+  await page.evaluate(() => globalThis.replayOldWorker());
   await expect(page.locator('.document-cell[data-side=before]')).toHaveText('original right');
   await expect(page.locator('.document-cell[data-side=after]')).toHaveText('original left');
 });

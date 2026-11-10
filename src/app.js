@@ -113,7 +113,8 @@ function updateChrome() {
   if (moveFocus) (loaded ? comparison : $('.file-browse[data-side=before]')).focus({ preventScroll: true });
   if (restoreFocus) $('.drop-target[data-side=before]').focus({ preventScroll: true });
   $('.comparison-summary').classList.toggle('busy', busy);
-  status.textContent = statusText[state.status];
+  const statusLabel = statusText[state.status];
+  if (status.textContent !== statusLabel) status.textContent = statusLabel;
   status.classList.toggle('sr-only', state.status === 'empty' || state.status === 'different' ||
     (state.status === 'rendered-same' && state.view === 'source'));
   $('#stats').hidden = busy || !state.result || !$('#stats').textContent;

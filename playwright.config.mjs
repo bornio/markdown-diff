@@ -15,7 +15,7 @@ export default defineConfig({
   globalTimeout: 120000,
   use: { baseURL, channel: 'chrome', viewport: { width: 1280, height: 800 } },
   webServer: {
-    command: 'npm run preview -- --host 127.0.0.1 --port 4173 --strictPort',
+    command: 'vite preview --host 127.0.0.1 --port 4173 --strictPort',
     url: baseURL,
     reuseExistingServer: false,
     timeout: 10000,
