@@ -7,7 +7,11 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build && node scripts/example-page.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "lint": "eslint . --max-warnings 0",
+    "check:performance": "node scripts/check-performance.mjs",
+    "check:size": "node scripts/check-size.mjs",
+    "check": "npm run lint && npm run check:performance && npm test && npm run build && npm run check:size && playwright test"
   },
   "dependencies": {
     "diff": "9.0.0",
@@ -17,6 +21,10 @@
     "marked": "18.1.3"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.65.0",
+    "eslint": "10.14.0",
+    "globals": "17.14.0",
     "vite": "7.3.8"
   }
 }

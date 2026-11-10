@@ -167,7 +167,10 @@ async function readFiles(files, side) {
       let text;
       try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(await file.arrayBuffer()); }
       catch { throw new Error(`${file.name} is not a UTF-8 text file.`); }
-      if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(text.slice(0, 8000))) throw new Error(`${file.name} looks like a binary file. Choose a UTF-8 text file.`);
+      for (let index = 0; index < text.length && index < 8000; index++) {
+        const code = text.charCodeAt(index);
+        if (code < 32 && code !== 9 && code !== 10 && code !== 13) throw new Error(`${file.name} looks like a binary file. Choose a UTF-8 text file.`);
+      }
       return { name: file.name, text };
     }));
     const accepted = documents.flatMap((document, index) => state.readIds[targets[index]] === selectionId ? [[targets[index], document]] : []);

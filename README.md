@@ -22,7 +22,7 @@ Your files stay in the browser. Comparison runs in a Web Worker. There is no bac
 
 ## Development
 
-Use Node.js 24 or newer.
+Use Node.js 24.22.2 from `.nvmrc` and install Google Chrome. The browser checks use the installed Chrome channel.
 
 ```sh
 npm ci
@@ -30,14 +30,20 @@ npm run dev
 ```
 
 ```sh
-npm test
-npm run build
-npm run preview
+npm run check
+```
+
+`check` runs correctness lint, fixed comparison workloads with a parent-controlled 10-second worker watchdog, the Node tests, a production build, raw asset byte caps, and the production browser suite. It starts its own preview server on port 4173. Keep that port free. `npm test` runs only the Node tests. The workload checks assert complete output and page limits. They do not measure browser latency or memory.
+
+Use `npm run preview` to inspect a production build. To check a subdirectory build, set `VITE_BASE_PATH` for the complete command.
+
+```sh
+VITE_BASE_PATH=/example/ npm run check
 ```
 
 ## Deployment
 
-GitHub Actions tests and deploys `main` to GitHub Pages. The build produces static HTML, CSS, JavaScript, and SVG files in `dist/`. The example has its own `example/index.html`, so direct links work on a static host.
+GitHub Actions runs `npm run check` for pull requests and `main`. After that check, a push or manual run on `main` deploys to GitHub Pages. Pull requests do not deploy. The build produces static HTML, CSS, JavaScript, and SVG files in `dist/`. The example has its own `example/index.html`, so direct links work on a static host.
 
 To use another host, deploy `dist/`. For a subdirectory, set the same base path when building and previewing. The default is `/`.
 
