@@ -157,6 +157,216 @@ test('large tables expose complete bounded pages with shared columns', () => {
   assert.equal(all(parse(row.pages[12].before),'col').length, 2);
 });
 
+test('changed merged cells retain original table layouts instead of synthetic alignment cells', () => {
+  const head = '<table><thead><tr><th>Group</th><th>Entry</th></tr></thead><tbody>';
+  for (const cell of ['td', 'th']) {
+    const merged = `${head}<tr><${cell} colspan="2">Draft</${cell}></tr></tbody></table>\r\n`;
+    const separate = `${head}<tr><${cell}>Ready</${cell}><${cell}>Maya</${cell}></tr></tbody></table>\n`;
+    for (const [before, after] of [[merged, separate], [separate, merged]]) {
+      const result = compareMarkdown(before, after);
+      assert.equal(result.precision.level, 'coarse');
+      assert.equal(result.precision.warnings.length, 1);
+      assert.match(result.precision.warnings[0], /merged cells.*removed and added blocks.*preserve.*layout/);
+      for (const [side, original, change] of [['before', before, 'remove'], ['after', after, 'add']]) {
+        const actual = all(parse(rendered(result, side)), 'table')[0];
+        const expected = all(parse(original), 'table')[0];
+        assert.equal(actual.properties.dataChange, change);
+        assert.deepEqual(all(actual, 'tr').map((row) => row.children.length), all(expected, 'tr').map((row) => row.children.length));
+        assert.deepEqual(all(actual, cell).map((node) => [text(node), node.properties.colSpan]), all(expected, cell).map((node) => [text(node), node.properties.colSpan]));
+        assert.equal(all(actual, 'colgroup').length, 0);
+        assert.doesNotMatch(rendered(result, side), /data-gap|data-edit|data-format-change/);
+        assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), original);
+      }
+    }
+  }
+});
+
+test('rowspans crossing the 100-row boundary stay whole, including rowspan zero', () => {
+  const rows = Array.from({ length: 99 }, (_, i) => `<tr><td>Group ${i + 1}</td><td>Entry ${i + 1}</td></tr>`).join('\r\n');
+  for (const span of [2, 0]) for (const cell of ['td', 'th']) for (const changed of [false, true]) {
+    const before = `<table><thead><tr><th>Group</th><th>Entry</th></tr></thead><tbody>${rows}\r\n<tr><${cell} rowspan="${span}">Shared group</${cell}><td>First</td></tr>\r\n<tr><td>Second</td></tr></tbody></table>\r\n`;
+    const after = changed ? before.replace('Entry 1<', 'Updated 1<') : before;
+    const result = compareMarkdown(before, after);
+    assert.equal(result.rows[0].pages, undefined);
+    assert.equal(result.rows[0].itemCount, undefined);
+    assert.equal(result.precision.level, 'coarse');
+    assert.equal(result.precision.warnings.length, changed ? 2 : 1);
+    assert.ok(result.precision.warnings.some((warning) => /row-spanning cells.*whole.*paginated.*preserve.*layout/.test(warning)));
+    assert.equal(result.rows[0].kind, changed ? 'changed' : 'same');
+    for (const [side, original] of [['before', before], ['after', after]]) {
+      const actual = parse(rendered(result, side));
+      const actualRows = all(actual, 'tr');
+      assert.equal(actualRows.length, 102);
+      assert.deepEqual(actualRows.slice(-2).map((row) => row.children.length), [2, 1]);
+      assert.equal(actualRows.at(-2).children[0].properties.rowSpan, span);
+      assert.deepEqual(actualRows.slice(-2).map(text), ['Shared groupFirst', 'Second']);
+      assert.doesNotMatch(rendered(result, side), /data-gap/);
+      if (!changed) assert.doesNotMatch(rendered(result, side), /data-change|data-edit|data-format-change/);
+      assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), original);
+    }
+  }
+});
+
+test('explicit unit spans retain ordinary word comparison and bounded pagination', () => {
+  const rows = Array.from({ length: 101 }, (_, i) => `<tr><td colspan="1" rowspan="1">Group ${i}</td><td>Entry ${i}</td></tr>`).join('\n');
+  const before = `<table><thead><tr><th colspan="1" rowspan="1">Group</th><th>Entry</th></tr></thead><tbody>${rows}</tbody></table>`;
+  const after = before.replace('Entry 50<', 'Updated 50<');
+  const result = compareMarkdown(before, after);
+  assert.equal(result.precision.level, 'word');
+  assert.deepEqual(result.precision.warnings, []);
+  assert.equal(result.rows[0].pages.length, 2);
+  assert.match(rendered(result, 'after'), /<ins data-edit="add">Updated<\/ins>/);
+  for (const [side, original] of [['before', before], ['after', after]]) {
+    const tables = all(parse(rendered(result, side)), 'table');
+    assert.ok(tables.every((node) => !has(node, 'dataChange')));
+    const cells = [...all(parse(rendered(result, side)), 'th'), ...all(parse(rendered(result, side)), 'td')].filter((node) => has(node, 'colSpan'));
+    assert.ok(cells.every((node) => node.properties.colSpan === 1 && node.properties.rowSpan === 1));
+    assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), original);
+  }
+});
+
+test('column spans alone remain safely paginated with original cells and spans', () => {
+  const rows = Array.from({ length: 215 }, (_, i) => `<tr><td colspan="2">Entry ${i}</td></tr>`).join('\n');
+  const before = `<table><thead><tr><th>Group</th><th>Entry</th></tr></thead><tbody>${rows}</tbody></table>\r\n`;
+  for (const changed of [false, true]) {
+    const after = changed ? before.replace('<td colspan="2">Entry 100</td>', '<td>Ready</td><td>Maya</td>') : before;
+    const result = compareMarkdown(before, after);
+    const row = result.rows[0];
+    assert.equal(row.pages.length, 3);
+    assert.equal(row.itemCount, 215);
+    assert.equal(result.precision.level, changed ? 'coarse' : 'word');
+    assert.equal(result.precision.warnings.length, changed ? 1 : 0);
+    if (changed) assert.match(result.precision.warnings[0], /merged cells/);
+    for (const [side, original] of [['before', before], ['after', after]]) {
+      const bodies = row.pages.map((page) => all(parse(page[side]), 'tbody')[0]);
+      assert.deepEqual(bodies.map((body) => body.children.length), [100, 100, 15]);
+      const cells = (body) => all(body, 'tr').map((tr) => tr.children.map((node) => [node.tagName, node.properties.colSpan, text(node)]));
+      assert.deepEqual(bodies.flatMap(cells), cells(all(parse(original), 'tbody')[0]));
+      assert.doesNotMatch(rendered(result, side), /data-gap/);
+      assert.equal(result.source.rows.map((source) => source[side]?.text || '').join(''), original);
+    }
+  }
+});
+
+const rowspanTable = (count, start, span) => {
+  const end = span === 0 ? count : Math.min(count, start + span);
+  const rows = Array.from({ length: count }, (_, i) => {
+    const entry = `<td>Entry ${i}</td>`;
+    if (i === start) return `<tr><td rowspan="${span}">Shared group</td>${entry}</tr>`;
+    return `<tr>${i > start && i < end ? '' : `<td>Group ${i}</td>`}${entry}</tr>`;
+  }).join('\r\n');
+  return `<table><thead><tr><th>Group</th><th>Entry</th></tr></thead><tbody>${rows}</tbody></table>`;
+};
+
+test('row spans within fixed page boundaries retain bounded complete pages', () => {
+  for (const [start, span] of [[0, 2], [98, 2], [100, 100], [999, 0], [999, 20]]) {
+    const value = rowspanTable(1000, start, span);
+    const result = compareMarkdown(value, value);
+    assert.equal(result.precision.level, 'word');
+    assert.deepEqual(result.precision.warnings, []);
+    for (const side of ['before', 'after']) {
+      const pages = result.rows[0].pages.map((page) => parse(page[side]));
+      const rows = pages.flatMap((page) => all(page, 'tbody')[0].children.filter((node) => node.tagName === 'tr'));
+      assert.equal(pages.length, 10);
+      assert.ok(pages.every((page) => all(page, 'tbody')[0].children.filter((node) => node.tagName === 'tr').length === 100));
+      assert.deepEqual(rows.map((row) => text(all(row, 'td').at(-1))), Array.from({ length: 1000 }, (_, i) => `Entry ${i}`));
+      assert.deepEqual(pages.flatMap((page) => all(page, 'td')).filter((cell) => cell.properties.rowSpan !== undefined).map((cell) => cell.properties.rowSpan), [span]);
+      assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), value);
+    }
+  }
+});
+
+test('a page-crossing span on either side keeps both original tables whole', () => {
+  const before = rowspanTable(1000, 0, 2);
+  const after = rowspanTable(1000, 99, 2);
+  for (const [left, right] of [[before, after], [after, before]]) {
+    const result = compareMarkdown(left, right);
+    assert.equal(result.rows[0].pages, undefined);
+    assert.ok(result.precision.warnings.some((warning) => warning.includes('row-spanning')));
+    for (const [side, original] of [['before', left], ['after', right]]) {
+      assert.equal(all(parse(result.rows[0][side]), 'tbody')[0].children.filter((node) => node.tagName === 'tr').length, 1000);
+      assert.doesNotMatch(result.rows[0][side], /data-gap/);
+      assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), original);
+    }
+  }
+});
+
+test('row spans confined to repeated headers preserve bounded body pages', () => {
+  const rows = Array.from({ length: 101 }, (_, i) => `<tr><td>Group ${i}</td><td>Entry ${i}</td></tr>`).join('\n');
+  const value = `<table><thead><tr><th rowspan="2">Group</th><th>Entry</th></tr><tr><th>Value</th></tr></thead><tbody>${rows}</tbody></table>`;
+  const result = compareMarkdown(value, value);
+  assert.equal(result.precision.level, 'word');
+  for (const side of ['before', 'after']) {
+    const pages = result.rows[0].pages.map((page) => parse(page[side]));
+    assert.deepEqual(pages.map((page) => all(page, 'tbody')[0].children.filter((node) => node.tagName === 'tr').length), [100, 1]);
+    for (const page of pages) {
+      assert.equal(all(page, 'thead')[0].children.filter((node) => node.tagName === 'tr').length, 2);
+      assert.equal(all(page, 'th')[0].properties.rowSpan, 2);
+    }
+    assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), value);
+  }
+});
+
+test('scoped body headers retain their complete row group on both sides', () => {
+  for (const scope of ['rowgroup', 'col', 'colgroup', 'ROWGROUP', 'COL']) for (const span of [1, 2]) {
+    const before = rowspanTable(101, 0, span).replace(`<td rowspan="${span}">Shared group</td>`, `<th scope="${scope}" rowspan="${span}">Project Orion</th>`);
+    for (const changed of [false, true]) {
+      const other = changed ? before.replace('Entry 100', 'Updated task') : before;
+      for (const [left, right] of [[before, other], [other, before]]) {
+        const result = compareMarkdown(left, right);
+        assert.equal(result.rows[0].pages, undefined);
+        assert.ok(result.precision.warnings.some((warning) => warning.includes('body headers')));
+        for (const [side, original] of [['before', left], ['after', right]]) {
+          const body = all(parse(result.rows[0][side]), 'tbody')[0];
+          const header = all(body, 'th')[0];
+          assert.equal(String(header.properties.scope).toLowerCase(), scope.toLowerCase());
+          assert.equal(header.properties.rowSpan, span);
+          assert.equal(text(header), 'Project Orion');
+          assert.equal(body.children.filter((node) => node.tagName === 'tr').length, 101);
+          assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), original);
+        }
+      }
+    }
+  }
+});
+
+test('implicit column headers in a body stay with their data', () => {
+  const rows = Array.from({ length: 101 }, (_, i) => `<tr><td>Project ${i}</td><td>Ready</td></tr>`).join('\n');
+  const value = `<table><tbody><tr><th>Project</th><th>Status</th></tr>${rows}</tbody></table>`;
+  const expanded = value.replace('<th>Status</th>', '<th>Status</th><th>Owner</th>').replaceAll('</td></tr>', '</td><td>Maya</td></tr>');
+  for (const [left, right] of [[value, value], [value, expanded], [expanded, value]]) {
+    const result = compareMarkdown(left, right);
+    assert.equal(result.rows[0].pages, undefined);
+    assert.ok(result.precision.warnings.some((warning) => warning.includes('body headers')));
+    for (const [side, original] of [['before', left], ['after', right]]) {
+      const body = all(parse(result.rows[0][side]), 'tbody')[0];
+      assert.equal(body.children.filter((node) => node.tagName === 'tr').length, 102);
+      assert.deepEqual(all(body, 'th').map(text), original === expanded ? ['Project', 'Status', 'Owner'] : ['Project', 'Status']);
+      assert.doesNotMatch(result.rows[0][side], /data-gap/);
+      assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), original);
+    }
+  }
+});
+
+test('row-local and mixed automatic body headers retain bounded pages', () => {
+  for (const scope of ['row', 'ROW', '']) {
+    const rows = Array.from({ length: 215 }, (_, i) => `<tr><th${scope ? ` scope="${scope}"` : ''}>Project ${i}</th><td>Entry ${i}</td></tr>`).join('\n');
+    const value = `<table><thead><tr><th>Project</th><th>Entry</th></tr></thead><tbody>${rows}</tbody></table>`;
+    const result = compareMarkdown(value, value);
+    assert.equal(result.precision.level, 'word');
+    for (const side of ['before', 'after']) {
+      const pages = result.rows[0].pages.map((page) => parse(page[side]));
+      assert.deepEqual(pages.map((page) => all(page, 'tbody')[0].children.filter((node) => node.tagName === 'tr').length), [100, 100, 15]);
+      assert.deepEqual(pages.flatMap((page) => all(all(page, 'tbody')[0], 'th')).map(text), Array.from({ length: 215 }, (_, i) => `Project ${i}`));
+      assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), value);
+    }
+  }
+  const value = rowspanTable(1000, 0, 2).replace('<td rowspan="2">Shared group</td>', '<th scope="row" rowspan="2">Shared group</th>');
+  const result = compareMarkdown(value, value);
+  assert.equal(result.precision.level, 'word');
+  assert.equal(result.rows[0].pages.length, 10);
+});
+
 test('ordered list pages preserve numbering and all items', () => {
   const value = Array.from({length:215},(_,i) => `${i+7}. Item ${i}`).join('\n');
   const result = compareMarkdown(value, value.replace('Item 102','Edited 102'));
@@ -206,7 +416,8 @@ test('code pages keep long edited text and surrogate pairs across cuts', () => {
   assert.ok(has(all(parse(row.pages[1].after), 'pre')[0], 'dataGap'));
 });
 
-test('code pages bound annotation nodes without changing which text is marked', () => {
+test('code pages bound annotation nodes without changing which text is marked', (t) => {
+  t.mock.method(Date, 'now', () => 0);
   const before = 'keep ' + 'old shared '.repeat(100) + 'tail';
   const after = 'keep ' + 'new shared '.repeat(100) + 'tail';
   const row = compareMarkdown(fence(before), fence(after)).rows[0];
@@ -218,6 +429,20 @@ test('code pages bound annotation nodes without changing which text is marked', 
     expected.at(-1)[1] += 'tail\n';
     assert.deepEqual(coverage(codePages(row, side)), expected);
     for (const page of row.pages) assert.ok(count(all(parse(page[side]), 'pre')[0]) <= 256);
+  }
+});
+
+test('elapsed work limits keep complete code and source with coarse highlighting', (t) => {
+  let time = 0;
+  t.mock.method(Date, 'now', () => time += 50);
+  const before = fence('keep ' + 'old shared '.repeat(100) + 'tail');
+  const after = fence('keep ' + 'new shared '.repeat(100) + 'tail');
+  const result = compareMarkdown(before, after);
+  assert.equal(result.precision.level, 'coarse');
+  assert.ok(result.precision.warnings.length > 0);
+  for (const [side, value] of [['before', before], ['after', after]]) {
+    assert.equal(text(all(parse(rendered(result, side)), 'code')[0]), value.slice(value.indexOf('\n') + 1, value.lastIndexOf('```')));
+    assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), value);
   }
 });
 

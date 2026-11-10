@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#151618" />
     <script>
       (() => {
@@ -35,8 +35,8 @@
         </div>
         </header>
         <div class="comparison-head">
-          <div class="file-bar" data-side="before"><span class="side-label">Before</span><span class="file-name" id="before-name">No file selected</span><button class="file-browse" data-side="before" aria-label="Choose Before file">Browse</button><input id="before-input" type="file" multiple accept=".md,.markdown,.txt,.mdx" hidden></div>
-          <div class="file-bar" data-side="after"><span class="side-label">After</span><span class="file-name" id="after-name">No file selected</span><button class="file-browse" data-side="after" aria-label="Choose After file">Browse</button><input id="after-input" type="file" multiple accept=".md,.markdown,.txt,.mdx" hidden></div>
+          <div class="file-bar" data-side="before"><span class="side-label">Before</span><details class="file-name" id="before-name"><summary tabindex="-1" aria-disabled="true">No file selected</summary></details><button class="file-browse" data-side="before" aria-label="Choose Before file">Browse</button><input id="before-input" type="file" multiple accept=".md,.markdown,.txt,.mdx" hidden></div>
+          <div class="file-bar" data-side="after"><span class="side-label">After</span><details class="file-name" id="after-name"><summary tabindex="-1" aria-disabled="true">No file selected</summary></details><button class="file-browse" data-side="after" aria-label="Choose After file">Browse</button><input id="after-input" type="file" multiple accept=".md,.markdown,.txt,.mdx" hidden></div>
         </div>
       </div>
       <main id="main">

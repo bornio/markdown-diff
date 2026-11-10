@@ -6,6 +6,7 @@ import { diffArrays, diffLines, diffWordsWithSpace } from 'diff';
 
 const inline = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'td', 'th', 'pre', 'summary']);
 const block = new Set(['p', 'ul', 'ol', 'table', 'blockquote', 'pre', 'div']);
+const bodyHeaderNotice = 'Tables with body headers are shown as whole blocks to preserve header context.';
 const tag = (node) => node?.tagName || node?.type;
 const element = (tagName, properties = {}, children = []) => ({ type: 'element', tagName, properties, children });
 const nodeText = (node) => node.type === 'text' ? node.value : (node.children || []).map(nodeText).join('');
@@ -234,12 +235,48 @@ function pairNodes(a, b, state) {
   if (b?.type === 'element') b.properties['data-pair'] = pair;
 }
 
+function hasCellSpan(node) {
+  return (['td', 'th'].includes(tag(node)) && (node.properties.colSpan > 1 || node.properties.rowSpan > 1 || node.properties.rowSpan === 0)) ||
+    (node.children || []).some(hasCellSpan);
+}
+
+function hasPersistentBodyHeader(row) {
+  const cells = row.children || [];
+  let allHeaders = cells.length > 0;
+  let hasAutoHeader = false;
+  for (const cell of cells) {
+    if (tag(cell) !== 'th') { allHeaders = false; continue; }
+    const scope = String(cell.properties.scope || '').toLowerCase();
+    if (['col', 'colgroup', 'rowgroup'].includes(scope)) return true;
+    hasAutoHeader ||= scope !== 'row';
+  }
+  return allHeaders && hasAutoHeader;
+}
+
+function tablePageBreakReason(body, pageSize) {
+  const rows = body?.children || [];
+  for (let index = 0; index < rows.length; index++) {
+    if (hasPersistentBodyHeader(rows[index])) return 'header';
+    for (const cell of rows[index].children || []) {
+      const span = Number(cell.properties?.rowSpan ?? 1);
+      if (span !== 0 && !(span > 1)) continue;
+      const end = span === 0 ? rows.length : Math.min(rows.length, index + span);
+      if (Math.floor(index / pageSize) !== Math.floor((end - 1) / pageSize)) return 'span';
+    }
+  }
+}
+
 function compareTable(a, b, state) {
   const sections = ['thead', 'tbody', 'tfoot'];
-  if ([a, b].some((table) => sections.some((name) => table.children.filter((node) => tag(node) === name).length > 1))) {
+  const spans = [a, b].some((table) => hasCellSpan(table));
+  const bodyHeaders = !spans && [a, b].some((table) => table.children.some((body) => tag(body) === 'tbody' && body.children.some(hasPersistentBodyHeader)));
+  if (spans || bodyHeaders || [a, b].some((table) => sections.some((name) => table.children.filter((node) => tag(node) === name).length > 1))) {
     a.properties['data-change'] = 'remove';
     b.properties['data-change'] = 'add';
-    state.warnings.add('A table with repeated sections is shown as removed and added blocks to preserve every row.');
+    state.warnings.add(spans
+      ? 'A table with merged cells is shown as removed and added blocks to preserve its layout.'
+      : bodyHeaders ? bodyHeaderNotice
+        : 'A table with repeated sections is shown as removed and added blocks to preserve every row.');
     return;
   }
   const columnCells = (table) => {
@@ -534,8 +571,9 @@ function splitCode(a, b, ancestors = 0) {
   return parts.some((part) => part.code) ? parts : whole();
 }
 
-function paginatedPair(a, b) {
+function paginatedPair(a, b, state) {
   if (tag(a) !== tag(b)) return undefined;
+  const pageSize = 100;
   const name = tag(a);
   const table = name === 'table';
   if (table && [a, b].some((node) => node.children.filter((child) => tag(child) === 'tbody').length > 1)) return undefined;
@@ -543,16 +581,26 @@ function paginatedPair(a, b) {
   const bodyA = table ? a.children.find((node) => tag(node) === 'tbody') : list ? a : undefined;
   const bodyB = table ? b.children.find((node) => tag(node) === 'tbody') : list ? b : undefined;
   const count = Math.max(bodyA?.children.length || 0, bodyB?.children.length || 0);
+  if (table && count > pageSize) {
+    for (const body of [bodyA, bodyB]) {
+      const reason = tablePageBreakReason(body, pageSize);
+      if (!reason) continue;
+      state.warnings.add(reason === 'header'
+        ? bodyHeaderNotice
+        : 'A table with row-spanning cells is shown whole instead of paginated to preserve its layout.');
+      return undefined;
+    }
+  }
   const fragment = (node, body, offset) => {
-    const items = (body?.children || []).slice(offset, offset + 100);
+    const items = (body?.children || []).slice(offset, offset + pageSize);
     if (!table) return { ...node, properties: { ...node.properties, ...(name === 'ol' ? { start: items.find((item) => !item.properties['data-gap'])?.properties.value ?? Number(node.properties.start ?? 1) + offset } : {}) }, children: items };
     return { ...node, children: node.children.map((child) => tag(child) === 'tbody' ? { ...child, children: items } : child) };
   };
   const pairs = [];
-  if (count > 100) {
+  if (count > pageSize) {
     const left = numberedList(a);
     const right = numberedList(b);
-    for (let offset = 0; offset < count; offset += 100) {
+    for (let offset = 0; offset < count; offset += pageSize) {
       pairs.push({ before: fragment(left, table ? bodyA : left, offset), after: fragment(right, table ? bodyB : right, offset) });
     }
   } else pairs.push({ before: a, after: b });
@@ -560,7 +608,7 @@ function paginatedPair(a, b) {
   if (parts.some((part) => part.code)) {
     return { pages: parts.map((part) => ({ before: toHtml(part.before).replaceAll('\r', '&#13;'), after: toHtml(part.after).replaceAll('\r', '&#13;') })), pageType: 'code' };
   }
-  if (count <= 100) return undefined;
+  if (count <= pageSize) return undefined;
   return { pages: pairs.map((pair) => ({ before: toHtml(pair.before), after: toHtml(pair.after) })), itemCount: count };
 }
 
@@ -573,7 +621,7 @@ export function compareMarkdown(beforeText, afterText) {
     const equal = a && b && state.fingerprint(a) === state.fingerprint(b);
     const kind = !a ? 'add' : !b ? 'remove' : equal ? 'same' : 'changed';
     const [left, right] = comparePair(a, b, state);
-    return { kind, ...(paginatedPair(left, right) || { before: toHtml(left), after: toHtml(right) }) };
+    return { kind, ...(paginatedPair(left, right, state) || { before: toHtml(left), after: toHtml(right) }) };
   });
   const source = sourceRows(beforeText, afterText, state);
   const stats = { added: 0, removed: 0, changed: 0, unchanged: 0 };

@@ -98,6 +98,13 @@ export function createComparisonView(container, chrome) {
       target.dataset.diffMarker = changed.dataset.change === 'add' ? '+' : '−';
     }
     for (const table of node.querySelectorAll('table')) {
+      let columns = 1;
+      for (const row of table.rows) {
+        let width = 0;
+        for (const cell of row.cells) width += cell.colSpan;
+        columns = Math.max(columns, width);
+      }
+      table.style.setProperty('--table-columns', String(columns));
       const wrapper = document.createElement('div');
       wrapper.className = 'table-scroll';
       wrapper.dataset.scrollLabel = `${sideName(side)}, table, horizontally scrollable`;
@@ -153,7 +160,8 @@ export function createComparisonView(container, chrome) {
         page = destination;
         fill();
         scheduleAlignment(true);
-        const top = window.scrollY + pager.getBoundingClientRect().top - chrome.getBoundingClientRect().height - 8;
+        const obscured = getComputedStyle(chrome).position === 'sticky' ? chrome.getBoundingClientRect().height : 0;
+        const top = window.scrollY + pager.getBoundingClientRect().top - obscured - 8;
         window.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
       };
       back.onclick = () => turn(-1);
