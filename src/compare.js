@@ -234,12 +234,20 @@ function pairNodes(a, b, state) {
   if (b?.type === 'element') b.properties['data-pair'] = pair;
 }
 
+function hasCellSpan(node, properties = ['colSpan', 'rowSpan']) {
+  return (['td', 'th'].includes(tag(node)) && properties.some((key) => node.properties[key] > 1 || (key === 'rowSpan' && node.properties[key] === 0))) ||
+    (node.children || []).some((child) => hasCellSpan(child, properties));
+}
+
 function compareTable(a, b, state) {
   const sections = ['thead', 'tbody', 'tfoot'];
-  if ([a, b].some((table) => sections.some((name) => table.children.filter((node) => tag(node) === name).length > 1))) {
+  const spans = [a, b].some((table) => hasCellSpan(table));
+  if (spans || [a, b].some((table) => sections.some((name) => table.children.filter((node) => tag(node) === name).length > 1))) {
     a.properties['data-change'] = 'remove';
     b.properties['data-change'] = 'add';
-    state.warnings.add('A table with repeated sections is shown as removed and added blocks to preserve every row.');
+    state.warnings.add(spans
+      ? 'A table with merged cells is shown as removed and added blocks to preserve its layout.'
+      : 'A table with repeated sections is shown as removed and added blocks to preserve every row.');
     return;
   }
   const columnCells = (table) => {
@@ -534,7 +542,7 @@ function splitCode(a, b, ancestors = 0) {
   return parts.some((part) => part.code) ? parts : whole();
 }
 
-function paginatedPair(a, b) {
+function paginatedPair(a, b, state) {
   if (tag(a) !== tag(b)) return undefined;
   const name = tag(a);
   const table = name === 'table';
@@ -543,6 +551,10 @@ function paginatedPair(a, b) {
   const bodyA = table ? a.children.find((node) => tag(node) === 'tbody') : list ? a : undefined;
   const bodyB = table ? b.children.find((node) => tag(node) === 'tbody') : list ? b : undefined;
   const count = Math.max(bodyA?.children.length || 0, bodyB?.children.length || 0);
+  if (table && count > 100 && [bodyA, bodyB].some((node) => node && hasCellSpan(node, ['rowSpan']))) {
+    state.warnings.add('A table with row-spanning cells is shown whole instead of paginated to preserve its layout.');
+    return undefined;
+  }
   const fragment = (node, body, offset) => {
     const items = (body?.children || []).slice(offset, offset + 100);
     if (!table) return { ...node, properties: { ...node.properties, ...(name === 'ol' ? { start: items.find((item) => !item.properties['data-gap'])?.properties.value ?? Number(node.properties.start ?? 1) + offset } : {}) }, children: items };
@@ -573,7 +585,7 @@ export function compareMarkdown(beforeText, afterText) {
     const equal = a && b && state.fingerprint(a) === state.fingerprint(b);
     const kind = !a ? 'add' : !b ? 'remove' : equal ? 'same' : 'changed';
     const [left, right] = comparePair(a, b, state);
-    return { kind, ...(paginatedPair(left, right) || { before: toHtml(left), after: toHtml(right) }) };
+    return { kind, ...(paginatedPair(left, right, state) || { before: toHtml(left), after: toHtml(right) }) };
   });
   const source = sourceRows(beforeText, afterText, state);
   const stats = { added: 0, removed: 0, changed: 0, unchanged: 0 };
