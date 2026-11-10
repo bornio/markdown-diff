@@ -8,6 +8,7 @@ export default defineConfig({
   testMatch: 'browser.spec.mjs',
   workers: 1,
   retries: 0,
+  maxFailures: 1,
   forbidOnly: true,
   timeout: 20000,
   globalTimeout: 120000,
