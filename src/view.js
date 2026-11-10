@@ -98,9 +98,9 @@ export function createComparisonView(container, chrome) {
       node.setAttribute('aria-description', description);
       for (const format of formats) {
         const target = format.matches('input[type=checkbox]') ? format.closest('li') || format : format;
-        const imageOnly = target.parentElement !== node && target.children.length === 1 &&
-          target.firstElementChild.matches('img') && !target.textContent.trim();
-        target.dataset.formatCue = target.matches('img, input') || imageOnly ? 'media' : '';
+        const media = target.matches('img, input') ||
+          (target.parentElement !== node && target.querySelector('img') && !target.textContent.trim());
+        target.dataset.formatCue = media ? 'media' : '';
       }
     }
     for (const list of node.querySelectorAll('ol')) {
