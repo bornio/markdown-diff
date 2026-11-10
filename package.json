@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
+    "dev": "vite",
     "build": "vite build && node scripts/example-page.mjs",
-    "preview": "vite preview --host 0.0.0.0",
+    "preview": "vite preview",
     "test": "node --test test/*.test.mjs",
     "lint": "eslint . --max-warnings 0",
     "check:performance": "node scripts/check-performance.mjs",
