@@ -14,5 +14,5 @@ apply(root.dataset.theme === 'light' ? 'light' : 'dark');
 toggle.addEventListener('click', () => {
   const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
   apply(next);
-  try { localStorage.setItem('markdown-diff-theme', next); } catch { return; }
+  try { localStorage.setItem('markdown-diff-theme', next); } catch {}
 });

@@ -4,8 +4,6 @@ import { example } from './example.js';
 import { createComparisonView } from './view.js';
 
 const $ = (selector) => document.querySelector(selector);
-const extensions = ['.md', '.markdown', '.txt', '.mdx'];
-const extensionPattern = new RegExp(`(${extensions.join('|').replaceAll('.', '\\.')})$`, 'i');
 const statusText = {
   empty: 'Ready when you are',
   reading: 'Reading files…',
@@ -176,16 +174,11 @@ async function readFiles(files, side) {
   updateChrome();
   try {
     const documents = await Promise.all(chosen.map(async (file) => {
-      if (!extensionPattern.test(file.name)) {
-        throw new Error(`Choose a ${extensions.slice(0, -1).join(', ')}, or ${extensions.at(-1)} text file.`);
-      }
+      if (!/\.(md|markdown|txt|mdx)$/i.test(file.name)) throw new Error('Choose a .md, .markdown, .txt, or .mdx text file.');
       let text;
       try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(await file.arrayBuffer()); }
       catch { throw new Error(`${file.name} is not a UTF-8 text file.`); }
-      for (let index = 0; index < text.length && index < 8000; index++) {
-        const code = text.charCodeAt(index);
-        if (code < 32 && code !== 9 && code !== 10 && code !== 13) throw new Error(`${file.name} looks like a binary file. Choose a UTF-8 text file.`);
-      }
+      if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(text.slice(0, 8000))) throw new Error(`${file.name} looks like a binary file. Choose a UTF-8 text file.`);
       return { name: file.name, text };
     }));
     const accepted = documents.flatMap((document, index) => state.readIds[targets[index]] === selectionId ? [[targets[index], document]] : []);
@@ -201,7 +194,6 @@ async function readFiles(files, side) {
 }
 for (const { side } of filenames) {
   const input = $(`#${side}-input`);
-  input.accept = extensions.join(',');
   input.onchange = () => { readFiles(input.files, side); input.value = ''; };
   $(`.file-browse[data-side=${side}]`).onclick = () => input.click();
   const target = $(`.drop-target[data-side=${side}]`);
