@@ -82,7 +82,7 @@ export function createComparisonView(container, chrome) {
       const change = kind === 'same' ? '' : kind === 'changed' ? ', changed' : side === 'before' ? ', removed' : ', added';
       node.setAttribute('aria-label', `${sideName(side)}${source ? `, line ${content.line}` : ''}${change}`);
     }
-    if (kind !== 'same' && !empty) node.dataset.changeCue = side === 'before' ? '−' : '+';
+    if (kind !== 'same' && !empty) node.dataset.changeCue = side === 'before' ? 'remove' : 'add';
     for (const edit of node.querySelectorAll('[data-edit]')) {
       edit.setAttribute('aria-description', edit.dataset.edit === 'add' ? 'Inserted text' : 'Removed text');
     }
@@ -91,11 +91,20 @@ export function createComparisonView(container, chrome) {
   }
 
   function prepareDocument(node, side) {
-    for (const changed of node.querySelectorAll('[data-change]')) {
-      if (changed.parentElement.closest('[data-change]') || changed.parentElement === node) continue;
-      const target = changed.tagName === 'TR' ? changed.querySelector('th:not([data-gap]), td:not([data-gap])') : changed;
-      if (!target || ['TABLE', 'THEAD', 'TBODY', 'TFOOT'].includes(target.tagName)) continue;
-      target.dataset.diffMarker = changed.dataset.change === 'add' ? '+' : '−';
+    if (node.querySelector('[data-format-change]')) {
+      const description = 'Formatting or attributes changed. Source shows the Markdown syntax.';
+      node.title = description;
+      node.setAttribute('aria-description', description);
+    }
+    for (const list of node.querySelectorAll('ol')) {
+      let value = list.start;
+      let digits = 1;
+      for (const item of list.children) {
+        if (item.tagName !== 'LI' || item.hasAttribute('data-gap')) continue;
+        if (item.hasAttribute('value')) value = item.value;
+        digits = Math.max(digits, String(value++).length);
+      }
+      list.style.setProperty('--list-digits', String(digits));
     }
     for (const table of node.querySelectorAll('table')) {
       let columns = 1;
@@ -114,6 +123,9 @@ export function createComparisonView(container, chrome) {
     for (const pre of node.querySelectorAll('pre')) {
       pre.dataset.scrollLabel = `${sideName(side)}, code, scrollable`;
     }
+    const first = node.firstElementChild;
+    if (first?.matches('h1, h2, h3, h4')) node.dataset.blockKind = 'heading';
+    else if (first?.classList.contains('table-scroll')) node.dataset.blockKind = 'table';
   }
 
   function buildRow(row, source) {

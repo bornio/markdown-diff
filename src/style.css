@@ -621,6 +621,9 @@ footer {
 .document-cell ul,.document-cell ol {
   padding-left:25px
 }
+.document-cell ol {
+  padding-left:max(25px,calc(var(--list-digits,1) * 1ch + 8px))
+}
 .document-cell li {
   padding-left:4px;
   margin:4px 0;
@@ -767,16 +770,10 @@ footer {
   padding:1px 0
 }
 .document-cell [data-change=remove] {
-  background:var(--remove);
-  box-shadow:-3px 0 0 var(--remove-marker)
+  background:var(--remove)
 }
 .document-cell [data-change=add] {
-  background:var(--add);
-  box-shadow:-3px 0 0 var(--add-marker)
-}
-.document-cell [data-format-change] {
-  outline:1px dashed var(--format);
-  outline-offset:3px
+  background:var(--add)
 }
 .document-cell [data-gap] {
   visibility:hidden;
@@ -787,36 +784,24 @@ footer {
   list-style:none
 }
 .document-cell[data-change-cue]:before {
-  content:attr(data-change-cue);
+  content:"";
   position:absolute;
   left:12px;
-  top:2px;
-  font:600 12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;
-  color:var(--red)
-}
-.document-cell[data-change-cue="+"]:before {
-  color:var(--green)
-}
-.document-cell [data-diff-marker] {
-  position:relative
-}
-.document-cell [data-diff-marker]:before {
-  content:attr(data-diff-marker);
-  position:absolute;
-  left:-12px;
   top:0;
-  font:600 12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;
-  color:var(--red)
+  bottom:19px;
+  border-left:3px solid var(--remove-marker);
+  pointer-events:none
 }
-.document-cell [data-diff-marker="+"]:before {
-  color:var(--green)
+.document-cell[data-change-cue=add]:before {
+  border-color:var(--add-marker)
 }
-.document-cell :is(td,th)[data-diff-marker] {
-  padding-left:23px
+.document-cell[data-block-kind=heading]:before {
+  top:12px;
+  bottom:16px
 }
-.document-cell :is(td,th)[data-diff-marker]:before {
-  left:5px;
-  top:8px
+.document-cell[data-block-kind=table]:before {
+  top:3px;
+  bottom:24px
 }
 .table-scroll {
   overflow:auto;
@@ -857,15 +842,15 @@ footer {
   border-right:1px solid var(--number-border)
 }
 .source-cell[data-change-cue]>.source-number:before {
-  content:"−";
+  content:"";
   position:absolute;
   left:7px;
-  color:var(--red);
-  font-weight:600
+  top:0;
+  bottom:0;
+  border-left:3px solid var(--remove-marker)
 }
-.source-cell[data-change-cue="+"]>.source-number:before {
-  content:"+";
-  color:var(--green)
+.source-cell[data-change-cue=add]>.source-number:before {
+  border-color:var(--add-marker)
 }
 .source-code {
   white-space:pre-wrap;
@@ -1070,13 +1055,6 @@ footer {
   footer>span:last-child {
     display:none
   }
-  .document-cell :is(td,th)[data-diff-marker] {
-    padding-left:17px
-  }
-  .document-cell :is(td,th)[data-diff-marker]:before {
-    left:3px;
-    top:5px
-  }
   .table-pager {
     gap:8px;
     padding-inline:8px
@@ -1086,6 +1064,9 @@ footer {
   }
   .document-cell ul,.document-cell ol {
     padding-left:16px
+  }
+  .document-cell ol {
+    padding-left:max(16px,calc(var(--list-digits,1) * 1ch + 8px))
   }
 
 }

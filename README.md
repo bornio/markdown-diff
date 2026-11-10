@@ -16,6 +16,8 @@ GitHub Flavored Markdown support includes tables, task lists, nested lists, fenc
 
 Wide tables scroll within each pane. Some HTML tables use block highlighting or stay whole to preserve merged cells and header context.
 
+Gutter lines mark changed sections: red for Before, green for After. Word highlights show text edits; shading shows added or removed content. Formatting and attribute changes also get a gutter line. Use Source to inspect the exact syntax.
+
 Your files stay in the browser. Comparison runs in a Web Worker. There is no backend, account, upload, or API key. Images referenced in a document can load from their URLs.
 
 ## Development
