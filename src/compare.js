@@ -170,7 +170,7 @@ function align(a, b, state, options = {}) {
   return pairs;
 }
 
-const shape = (node) => node.type === 'text' ? '' : [tag(node), node.properties, (node.children || []).map((child) => shape(child))];
+const shape = (node) => node.type === 'text' ? '' : [tag(node), node.properties, node.children.map((child) => shape(child))];
 function annotateText(node, intervals, offset = { value: 0 }) {
   if (!node.children) return;
   node.children = node.children.flatMap((child) => {
@@ -226,7 +226,7 @@ function highlight(a, b, state) {
 
 function gap(node) {
   if (node.type !== 'element') return element('span', { 'data-gap': true, ariaHidden: 'true' });
-  const children = tag(node) === 'tr' ? (node.children || []).map(gap) : [];
+  const children = tag(node) === 'tr' ? node.children.map(gap) : [];
   return element(tag(node), { 'data-gap': true, ariaHidden: 'true' }, children);
 }
 function pairNodes(a, b, state) {
@@ -355,6 +355,15 @@ function compareTable(a, b, state) {
   b.children = [colgroup(), ...rightSections];
 }
 
+function assignListValues(list) {
+  let value = Number(list.properties.start ?? 1);
+  for (const item of list.children) {
+    if (tag(item) !== 'li' || item.properties['data-gap']) continue;
+    value = Number(item.properties.value ?? value);
+    item.properties.value = value++;
+  }
+}
+
 function comparePair(a, b, state) {
   if (!a || !b) {
     const original = a || b;
@@ -382,14 +391,8 @@ function comparePair(a, b, state) {
         a.properties['data-format-change'] = true;
         b.properties['data-format-change'] = true;
       }
-      const children = align(a.children || [], b.children || [], state).map(([x, y]) => comparePair(x, y, state));
-      if (tag(a) === 'ol') for (const list of [a, b]) {
-        let value = Number(list.properties.start ?? 1);
-        for (const item of list.children) if (tag(item) === 'li') {
-          value = Number(item.properties.value ?? value);
-          item.properties.value = value++;
-        }
-      }
+      const children = align(a.children, b.children, state).map(([x, y]) => comparePair(x, y, state));
+      if (tag(a) === 'ol') { assignListValues(a); assignListValues(b); }
       a.children = children.map(([x]) => x);
       b.children = children.map(([, y]) => y);
     }
@@ -513,13 +516,10 @@ function codePages(pre, ancestors = 0) {
 
 function numberedList(node) {
   if (tag(node) !== 'ol') return node;
-  let value = Number(node.properties.start ?? 1);
-  const children = node.children.map((child) => {
-    if (tag(child) !== 'li' || child.properties['data-gap']) return child;
-    value = Number(child.properties.value ?? value);
-    return { ...child, properties: { ...child.properties, value: value++ } };
-  });
-  return { ...node, children };
+  const list = { ...node, children: node.children.map((child) =>
+    tag(child) === 'li' && !child.properties['data-gap'] ? { ...child, properties: { ...child.properties } } : child) };
+  assignListValues(list);
+  return list;
 }
 
 function splitCode(a, b, ancestors = 0) {

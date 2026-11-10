@@ -144,8 +144,8 @@ test('sanitization removes named anchors, secures links, and keeps exact escaped
   assert.equal(result.source.rows[0].after.html, '&lt;a id=&quot;anchor&quot; name=&quot;alias&quot; href=&quot;https://example.com/&quot;&gt;safe &amp; sound&lt;/a&gt;');
 });
 
-test('empty and mixed raw containers preserve text and void elements while comments disappear', () => {
-  const before = '<div></div><div>Left <em>old</em><br><img src="/safe.png"><!--discard--><p>tail</p></div>';
+test('empty and mixed raw containers preserve text and void elements while comments and doctypes disappear', () => {
+  const before = '<!doctype html><div></div><div>Left <em>old</em><br><img src="/safe.png"><!--discard--><p>tail</p></div>';
   const after = before.replace('old', 'new');
   const result = compareMarkdown(before, after);
   for (const [side, word, source] of [['before', 'old', before], ['after', 'new', after]]) {
@@ -155,7 +155,7 @@ test('empty and mixed raw containers preserve text and void elements while comme
     assert.equal(text(tree), `Left ${word}tail`);
     assert.equal(all(tree, 'br').length, 1);
     assert.equal(all(tree, 'img').length, 1);
-    assert.doesNotMatch(html, /<!--|discard/);
+    assert.doesNotMatch(html, /<!--|<!doctype|discard/);
     assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), source);
   }
 });

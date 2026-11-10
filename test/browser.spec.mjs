@@ -65,6 +65,13 @@ test('file boundaries, status visibility, and actual Source survive success and 
   await expect(page.locator('.source-cell[data-side=after] .source-code')).toContainText('new & safe');
   await page.locator('#rendered-view').click();
   await expect(page.locator('.document-cell[data-side=after]')).toHaveText('new & safe');
+  await page.locator('#before-input').setInputFiles([file('deep.md', '<div>'.repeat(110) + 'deep' + '</div>'.repeat(110)), file('safe.md', 'safe')]);
+  await expect(status).toHaveText('Comparison stopped');
+  await expect(status).not.toHaveClass(/sr-only/);
+  await expect(page.locator('#comparison')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('#notice')).toHaveText('This document is nested more than 100 levels deep. Your selected files are kept. Choose another file or try swapping the sides.');
+  await expect(page.locator('#before-name')).toHaveAttribute('title', 'deep.md');
+  await expect(page.locator('#after-name')).toHaveAttribute('title', 'safe.md');
   await page.locator('#clear').click();
   await expect(status).toHaveText('Ready when you are');
   await expect(page.locator('#stats')).toBeHidden();

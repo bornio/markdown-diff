@@ -4,11 +4,23 @@ import { example } from './example.js';
 import { createComparisonView } from './view.js';
 
 const $ = (selector) => document.querySelector(selector);
+const extensions = ['.md', '.markdown', '.txt', '.mdx'];
+const extensionPattern = new RegExp(`(${extensions.join('|').replaceAll('.', '\\.')})$`, 'i');
+const statusText = {
+  empty: 'Ready when you are',
+  reading: 'Reading files…',
+  working: 'Comparing files…',
+  identical: 'Files are identical',
+  'rendered-same': 'Same rendered content',
+  different: 'Comparison ready',
+  'open-error': 'Could not open file',
+  'compare-error': 'Comparison stopped',
+};
 const filenameSegments = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
 const state = {
   pair: { before: null, after: null }, view: 'rendered', requestId: 0,
   selectionId: 0, readIds: { before: 0, after: 0 }, worker: null,
-  timeout: null, result: null, phase: 'empty', selectionNotice: '',
+  timeout: null, result: null, status: 'empty', selectionNotice: '',
 };
 const comparison = $('#comparison');
 const status = $('#status');
@@ -81,27 +93,29 @@ function updateChrome() {
     name.classList.toggle('loaded', !!state.pair[side]);
   }
   const loaded = !!(state.pair.before || state.pair.after);
+  const busy = state.status === 'reading' || state.status === 'working';
   $('.app').classList.toggle('has-files', loaded);
   const head = $('.comparison-head');
-  const hideHead = !loaded && state.phase !== 'reading';
+  const hideHead = !loaded && state.status !== 'reading';
   const restoreFocus = keyboard && hideHead && head.contains(document.activeElement);
   head.hidden = hideHead;
   $('.view-switch').hidden = !loaded;
   $('#swap').hidden = !loaded;
-  $('#clear').hidden = !loaded && state.phase === 'empty';
+  $('#clear').hidden = !loaded && state.status === 'empty';
   $('#swap').disabled = !loaded;
-  $('#clear').disabled = !loaded && !['reading', 'error'].includes(state.phase);
+  $('#clear').disabled = !loaded && !['reading', 'open-error', 'compare-error'].includes(state.status);
   const empty = $('#empty');
-  const moveFocus = keyboard && empty.contains(document.activeElement) && (loaded || state.phase === 'reading');
-  empty.hidden = loaded || state.phase === 'reading';
+  const moveFocus = keyboard && empty.contains(document.activeElement) && (loaded || state.status === 'reading');
+  empty.hidden = loaded || state.status === 'reading';
   comparison.hidden = !loaded;
-  comparison.setAttribute('aria-busy', String(state.phase === 'working' || state.phase === 'reading'));
+  comparison.setAttribute('aria-busy', String(busy));
   if (moveFocus) (loaded ? comparison : $('.file-browse[data-side=before]')).focus({ preventScroll: true });
   if (restoreFocus) $('.drop-target[data-side=before]').focus({ preventScroll: true });
-  $('.comparison-summary').classList.toggle('busy', state.phase === 'working' || state.phase === 'reading');
-  status.classList.toggle('sr-only', state.phase === 'empty' || (state.phase === 'ready' &&
-    (status.textContent === 'Comparison ready' || (state.view === 'source' && status.textContent === 'Same rendered content'))));
-  $('#stats').hidden = ['reading', 'working'].includes(state.phase) || !state.result || !$('#stats').textContent;
+  $('.comparison-summary').classList.toggle('busy', busy);
+  status.textContent = statusText[state.status];
+  status.classList.toggle('sr-only', state.status === 'empty' || state.status === 'different' ||
+    (state.status === 'rendered-same' && state.view === 'source'));
+  $('#stats').hidden = busy || !state.result || !$('#stats').textContent;
   $('#rendered-view').setAttribute('aria-pressed', String(state.view === 'rendered'));
   $('#source-view').setAttribute('aria-pressed', String(state.view === 'source'));
   scheduleFilenames();
@@ -110,9 +124,8 @@ function startComparison() {
   cancelWorker();
   message('');
   state.result = null;
-  state.phase = 'working';
+  state.status = 'working';
   display.reset();
-  status.textContent = 'Comparing files…';
   $('#stats').textContent = '';
   updateChrome();
   const requestId = state.requestId;
@@ -121,21 +134,20 @@ function startComparison() {
   const fail = (text) => {
     if (requestId !== state.requestId) return;
     cancelWorker();
-    state.phase = 'error';
-    status.textContent = 'Comparison stopped';
+    state.status = 'compare-error';
     message(`${text} Your selected files are kept. Choose another file or try swapping the sides.`, true);
     updateChrome();
   };
   worker.onmessage = ({ data }) => {
     if (data.requestId !== state.requestId) return;
+    if (data.status === 'error') { fail(data.message); return; }
     worker.terminate();
     state.worker = null;
     clearTimeout(state.timeout);
-    if (data.status === 'error') { fail(data.message); return; }
+    state.timeout = null;
     state.result = data.comparison;
-    state.phase = 'ready';
     const { added, removed, changed } = state.result.stats;
-    status.textContent = !added && !removed && !changed ? 'Files are identical' : state.result.rows.every((row) => row.kind === 'same') ? 'Same rendered content' : 'Comparison ready';
+    state.status = !added && !removed && !changed ? 'identical' : state.result.rows.every((row) => row.kind === 'same') ? 'rendered-same' : 'different';
     const counts = [added ? `<span class="stat-add" aria-label="${added} added ${added === 1 ? 'line' : 'lines'}">+${added}</span>` : '',
       removed ? `<span class="stat-remove" aria-label="${removed} removed ${removed === 1 ? 'line' : 'lines'}">−${removed}</span>` : ''].filter(Boolean).join(' ');
     $('#stats').innerHTML = [counts, changed ? `${changed} changed ${changed === 1 ? 'line' : 'lines'}` : ''].filter(Boolean).join(' <span aria-hidden="true">·</span> ');
@@ -156,14 +168,15 @@ async function readFiles(files, side) {
   const targets = chosen.length === 2 ? ['before', 'after'] : [side || 'after'];
   for (const target of targets) state.readIds[target] = selectionId;
   cancelWorker();
-  state.phase = 'reading';
-  status.textContent = 'Reading files…';
+  state.status = 'reading';
   state.selectionNotice = files.length > 2 ? 'Only the first two files were selected. Drop another file on either side to replace it.' : '';
   message('');
   updateChrome();
   try {
     const documents = await Promise.all(chosen.map(async (file) => {
-      if (!/\.(md|markdown|txt|mdx)$/i.test(file.name)) throw new Error('Choose a .md, .markdown, .txt, or .mdx text file.');
+      if (!extensionPattern.test(file.name)) {
+        throw new Error(`Choose a ${extensions.slice(0, -1).join(', ')}, or ${extensions.at(-1)} text file.`);
+      }
       let text;
       try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(await file.arrayBuffer()); }
       catch { throw new Error(`${file.name} is not a UTF-8 text file.`); }
@@ -179,14 +192,14 @@ async function readFiles(files, side) {
     startComparison();
   } catch (error) {
     if (targets.every((target) => state.readIds[target] !== selectionId)) return;
-    state.phase = state.result ? 'ready' : 'error';
-    status.textContent = 'Could not open file';
+    state.status = 'open-error';
     message(error.message, true);
     updateChrome();
   }
 }
 for (const side of ['before', 'after']) {
   const input = $(`#${side}-input`);
+  input.accept = extensions.join(',');
   input.onchange = () => { readFiles(input.files, side); input.value = ''; };
   $(`.file-browse[data-side=${side}]`).onclick = () => input.click();
   const target = $(`.drop-target[data-side=${side}]`);
@@ -206,10 +219,9 @@ $('#clear').onclick = () => {
   cancelWorker();
   state.pair = { before: null, after: null };
   state.result = null;
-  state.phase = 'empty';
+  state.status = 'empty';
   display.reset();
   state.selectionNotice = '';
-  status.textContent = 'Ready when you are';
   $('#stats').textContent = '';
   message('');
   updateChrome();

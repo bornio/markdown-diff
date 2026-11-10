@@ -12,24 +12,23 @@ export function createComparisonView(container, chrome) {
   const activeRows = new Set();
   const measuredHeights = new WeakMap();
 
+  function recordHeight(node, height) {
+    if (height <= 0 || measuredHeights.get(node) === height) return;
+    measuredHeights.set(node, height);
+    node.style.containIntrinsicBlockSize = `auto ${height}px`;
+  }
+
   function snapshotRows(rows) {
     const sizes = [...rows].filter((node) => node.isConnected && current?.root.contains(node))
       .map((node) => [node, node.getBoundingClientRect().height]);
-    for (const [node, height] of sizes) {
-      if (height <= 0 || measuredHeights.get(node) === height) continue;
-      measuredHeights.set(node, height);
-      node.style.containIntrinsicBlockSize = `auto ${height}px`;
-    }
+    for (const [node, height] of sizes) recordHeight(node, height);
   }
 
   const resized = new ResizeObserver((entries) => {
     for (const entry of entries) {
       const node = entry.target;
       if (!node.isConnected || !current?.root.contains(node)) continue;
-      const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
-      if (height <= 0 || measuredHeights.get(node) === height) continue;
-      measuredHeights.set(node, height);
-      node.style.containIntrinsicBlockSize = `auto ${height}px`;
+      recordHeight(node, entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height);
     }
     scheduleAlignment();
   });
