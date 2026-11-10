@@ -56,6 +56,14 @@ function updateChrome() {
     name.classList.toggle('loaded', !!state.pair[side]);
   }
   const loaded = !!(state.pair.before || state.pair.after);
+  $('.app').classList.toggle('has-files', loaded);
+  const head = $('.comparison-head');
+  const hideHead = !loaded && state.phase !== 'reading';
+  const restoreFocus = keyboard && hideHead && head.contains(document.activeElement);
+  head.hidden = hideHead;
+  $('.view-switch').hidden = !loaded;
+  $('#swap').hidden = !loaded;
+  $('#clear').hidden = !loaded && state.phase === 'empty';
   $('#swap').disabled = !loaded;
   $('#clear').disabled = !loaded && !['reading', 'error'].includes(state.phase);
   const empty = $('#empty');
@@ -64,7 +72,11 @@ function updateChrome() {
   comparison.hidden = !loaded;
   comparison.setAttribute('aria-busy', String(state.phase === 'working' || state.phase === 'reading'));
   if (moveFocus) (loaded ? comparison : $('.file-browse[data-side=before]')).focus({ preventScroll: true });
-  $('.status-bar').classList.toggle('busy', state.phase === 'working' || state.phase === 'reading');
+  if (restoreFocus) $('.drop-target[data-side=before]').focus({ preventScroll: true });
+  $('.comparison-summary').classList.toggle('busy', state.phase === 'working' || state.phase === 'reading');
+  status.classList.toggle('sr-only', state.phase === 'empty' || (state.phase === 'ready' &&
+    (status.textContent === 'Comparison ready' || (state.view === 'source' && status.textContent === 'Same rendered content'))));
+  $('#stats').hidden = ['reading', 'working'].includes(state.phase) || !state.result || !$('#stats').textContent;
   $('#rendered-view').setAttribute('aria-pressed', String(state.view === 'rendered'));
   $('#source-view').setAttribute('aria-pressed', String(state.view === 'source'));
 }
@@ -97,8 +109,10 @@ function startComparison() {
     state.result = data.comparison;
     state.phase = 'ready';
     const { added, removed, changed } = state.result.stats;
-    status.textContent = !added && !removed && !changed ? 'Files are identical' : state.result.rows.every((row) => row.kind === 'same') ? 'Source changed · rendered content is identical' : 'Comparison ready';
-    $('#stats').innerHTML = `<span class="stat-add">+${added}</span> <span class="stat-remove">−${removed}</span>${changed ? ` <span>· ${changed} changed ${changed === 1 ? 'line' : 'lines'}</span>` : ''}`;
+    status.textContent = !added && !removed && !changed ? 'Files are identical' : state.result.rows.every((row) => row.kind === 'same') ? 'Same rendered content' : 'Comparison ready';
+    const counts = [added ? `<span class="stat-add" aria-label="${added} added ${added === 1 ? 'line' : 'lines'}">+${added}</span>` : '',
+      removed ? `<span class="stat-remove" aria-label="${removed} removed ${removed === 1 ? 'line' : 'lines'}">−${removed}</span>` : ''].filter(Boolean).join(' ');
+    $('#stats').innerHTML = [counts, changed ? `${changed} changed ${changed === 1 ? 'line' : 'lines'}` : ''].filter(Boolean).join(' <span aria-hidden="true">·</span> ');
     message(state.result.precision.warnings.length ? `Simplified comparison. ${state.result.precision.warnings.join(' ')}` : '');
     updateChrome();
     display.reset(state.result, Object.fromEntries(['before', 'after'].map((side) => [side, state.pair[side]?.name || 'Empty document'])));
@@ -213,4 +227,4 @@ if (location.pathname.replace(/\/$/, '') === `${import.meta.env.BASE_URL}example
   document.title = 'Markdown Diff example';
   state.pair = structuredClone(example);
   startComparison();
-}
+} else updateChrome();

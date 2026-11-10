@@ -52,7 +52,7 @@ export function createComparisonView(container, chrome) {
   }, { rootMargin: '1200px 0px' });
 
   function sideName(side) {
-    return `${side === 'before' ? 'Before' : 'After'}: ${names[side]}`;
+    return `${side === 'before' ? 'Left' : 'Right'}: ${names[side]}`;
   }
 
   function cell(content, source, side, kind) {

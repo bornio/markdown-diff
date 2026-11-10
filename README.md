@@ -6,17 +6,17 @@ Compare Markdown files side by side, with changes inside rendered tables, lists,
 
 ## Compare files
 
-Drop two files together. The first becomes Before and the second becomes After. Use Swap to reverse them. Drop a file on either side to replace it, or start with one file to compare it against an empty document.
+Drop two files together. The first goes on the left and the second on the right. Use the swap arrows to reverse them. Drop a file on either side to replace it, or start with one file to compare it against an empty document.
 
 Open a filename in the header to read it in full.
 
-Choose Rendered or Source, and use the theme button to switch between light and dark. The app accepts UTF-8 `.md`, `.markdown`, `.txt`, and `.mdx` files. It treats `.mdx` as Markdown and does not execute components.
+Use the eye icon for rendered Markdown and the code icon for Source. The sun or moon switches between light and dark. Upload icons choose local files; the × clears the comparison. Each control has a hover hint and an accessible label. The app accepts UTF-8 `.md`, `.markdown`, `.txt`, and `.mdx` files. It treats `.mdx` as Markdown and does not execute components.
 
 GitHub Flavored Markdown support includes tables, task lists, nested lists, fenced code, strikethrough, and links. Large tables, lists, and supported code blocks use pages. You cannot select text across rendered pages. Source retains the complete file. A notice identifies comparisons that use simpler highlighting after a work limit.
 
 Wide tables scroll within each pane. Some HTML tables use block highlighting or stay whole to preserve merged cells and header context.
 
-Gutter lines mark changed sections: red for Before, green for After. Word highlights show text edits; shading shows added or removed content and formatting or attribute changes. Use Source to inspect the exact syntax.
+Gutter lines mark changed sections: red on the left, green on the right. Word highlights show text edits; shading shows added or removed content and formatting or attribute changes. Use Source to inspect the exact syntax.
 
 Your files stay in the browser. Comparison runs in a Web Worker. There is no backend, account, upload, or API key. Images referenced in a document can load from their URLs.
 
