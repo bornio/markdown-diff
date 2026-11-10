@@ -4,6 +4,7 @@ import { example } from './example.js';
 import { createComparisonView } from './view.js';
 
 const $ = (selector) => document.querySelector(selector);
+const filenameSegments = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
 const state = {
   pair: { before: null, after: null }, view: 'rendered', requestId: 0,
   selectionId: 0, readIds: { before: 0, after: 0 }, worker: null,
@@ -33,13 +34,23 @@ function message(text, error = false) {
 function updateChrome() {
   for (const side of ['before', 'after']) {
     const name = $(`#${side}-name`);
-    name.textContent = state.pair[side]?.name || 'Empty document';
-    name.title = state.pair[side]?.name || 'Empty document';
+    const filename = state.pair[side]?.name || 'Empty document';
+    if (name.title !== filename) {
+      const segments = filenameSegments ? [...filenameSegments.segment(filename)].map(({ segment }) => segment) : [];
+      const start = document.createElement('span');
+      start.className = 'file-name-start';
+      start.textContent = filenameSegments ? segments.slice(0, -20).join('') : filename;
+      const end = document.createElement('span');
+      end.className = 'file-name-end';
+      end.textContent = segments.slice(-20).join('');
+      name.replaceChildren(start, end);
+      name.title = filename;
+    }
     name.classList.toggle('loaded', !!state.pair[side]);
   }
   const loaded = !!(state.pair.before || state.pair.after);
   $('#swap').disabled = !loaded;
-  $('#clear').disabled = !loaded && state.phase !== 'reading';
+  $('#clear').disabled = !loaded && !['reading', 'error'].includes(state.phase);
   const empty = $('#empty');
   const moveFocus = keyboard && empty.contains(document.activeElement) && (loaded || state.phase === 'reading');
   empty.hidden = loaded || state.phase === 'reading';
@@ -118,7 +129,7 @@ async function readFiles(files, side) {
     startComparison();
   } catch (error) {
     if (targets.every((target) => state.readIds[target] !== selectionId)) return;
-    state.phase = state.result ? 'ready' : state.pair.before || state.pair.after ? 'error' : 'empty';
+    state.phase = state.result ? 'ready' : 'error';
     status.textContent = 'Could not open file';
     message(error.message, true);
     updateChrome();

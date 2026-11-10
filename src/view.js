@@ -153,7 +153,8 @@ export function createComparisonView(container, chrome) {
         page = destination;
         fill();
         scheduleAlignment(true);
-        const top = window.scrollY + pager.getBoundingClientRect().top - chrome.getBoundingClientRect().height - 8;
+        const obscured = getComputedStyle(chrome).position === 'sticky' ? chrome.getBoundingClientRect().height : 0;
+        const top = window.scrollY + pager.getBoundingClientRect().top - obscured - 8;
         window.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
       };
       back.onclick = () => turn(-1);

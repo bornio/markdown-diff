@@ -127,6 +127,11 @@ body {
 button,a,[role=button] {
   -webkit-tap-highlight-color:transparent
 }
+button,[role=button],.brand,.text-button {
+  touch-action:manipulation;
+  user-select:none;
+  -webkit-user-select:none
+}
 button {
   font:inherit;
   cursor:pointer;
@@ -138,9 +143,11 @@ button {
   font-size:12px;
   line-height:1.4
 }
-button:hover {
-  background:var(--hover);
-  border-color:var(--border-strong)
+@media(hover:hover) and (pointer:fine) {
+  button:where(:not(:disabled):not([aria-disabled=true])):hover {
+    background:var(--hover);
+    border-color:var(--border-strong)
+  }
 }
 button:disabled,button[aria-disabled=true] {
   opacity:.45;
@@ -154,7 +161,10 @@ button[hidden],[hidden] {
   display:none!important
 }
 .app {
-  min-height:100vh;
+  min-height:100dvh;
+  padding-left:env(safe-area-inset-left,0px);
+  padding-right:env(safe-area-inset-right,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
   display:flex;
   flex-direction:column
 }
@@ -162,7 +172,8 @@ button[hidden],[hidden] {
   position:sticky;
   top:0;
   z-index:5;
-  background:var(--page)
+  background:var(--page);
+  padding-top:env(safe-area-inset-top,0px)
 }
 .toolbar {
   min-height:76px;
@@ -244,9 +255,11 @@ button[hidden],[hidden] {
   box-shadow:inset 0 0 0 1px var(--selection-border),0 1px 2px var(--shadow);
   font-weight:600
 }
-.view-switch button:not([aria-pressed=true]):hover {
-  background:var(--hover);
-  color:var(--heading)
+@media(hover:hover) and (pointer:fine) {
+  .view-switch button:not([aria-pressed=true]):hover {
+    background:var(--hover);
+    color:var(--heading)
+  }
 }
 main {
   flex:1;
@@ -277,12 +290,28 @@ main {
   color:var(--subtle)
 }
 .file-name {
+  display:flex;
+  min-width:0;
   font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
   color:var(--muted);
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
   font-size:12px
+}
+.file-name-start {
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis
+}
+.file-name-end {
+  flex-shrink:0;
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  direction:rtl;
+  text-align:left;
+  unicode-bidi:plaintext
 }
 .file-name.loaded {
   color:var(--text)
@@ -383,9 +412,15 @@ main {
   cursor:pointer;
   transition:border-color .15s,background .15s
 }
-.drop-target:hover,.drop-target.drag-over,.file-bar.drag-over {
+.drop-target.drag-over,.file-bar.drag-over {
   border-color:var(--border-strong);
   background:var(--hover)
+}
+@media(hover:hover) and (pointer:fine) {
+  .drop-target:hover {
+    border-color:var(--border-strong);
+    background:var(--hover)
+  }
 }
 .file-icon {
   width:39px;
@@ -440,11 +475,27 @@ main {
   line-height:1.4;
   text-decoration:none
 }
-.text-button:hover {
-  background:transparent;
+@media(hover:hover) and (pointer:fine) {
+  .text-button:hover {
+    background:transparent;
+    color:var(--heading);
+    text-decoration:underline;
+    text-underline-offset:3px
+  }
+}
+button:not(:disabled):not([aria-disabled=true]):active,.drop-target:active {
+  background:var(--pressed);
+  border-color:var(--border-strong)
+}
+.drop-target:active {
+  transition:none
+}
+.text-button:active {
   color:var(--heading);
-  text-decoration:underline;
-  text-underline-offset:3px
+  text-decoration:underline
+}
+.brand:active {
+  opacity:.7
 }
 .text-button span {
   margin-left:7px
@@ -879,24 +930,27 @@ footer {
   }
   .file-bar {
     display:grid;
-    grid-template-columns:max-content minmax(0,1fr);
+    grid-template-columns:minmax(0,1fr) max-content;
     padding:13px 12px;
     gap:8px
   }
   .file-name {
+    grid-row:2;
+    grid-column:1/-1;
     font-size:12px;
     min-width:0;
     max-width:none
   }
   .file-browse {
-    grid-column:1/-1;
-    justify-self:start;
+    grid-column:2;
+    grid-row:1;
+    justify-self:end;
     font-size:12px;
     padding:7px 8px;
     min-height:40px;
     text-align:left;
     margin-top:0;
-    margin-left:-8px
+    margin-right:-8px
   }
   .side-label {
     font-size:10px
@@ -1002,7 +1056,6 @@ footer {
 
 }
 
-
 @media(prefers-reduced-motion:reduce) {
   .status-bar.busy #status:before {
     animation:none
@@ -1056,5 +1109,22 @@ footer {
   .brand-row {
     width:100%;
     justify-content:space-between
+  }
+}
+@media(pointer:coarse) {
+  #theme-toggle,.tools>button,.file-browse,.table-pager button,.view-switch button,.brand,.text-button {
+    min-height:44px
+  }
+  .document-cell summary {
+    min-height:44px;
+    touch-action:manipulation
+  }
+}
+@media(max-height:450px) {
+  #comparison-chrome {
+    position:static
+  }
+  .pair-row,.table-pager,[data-scroll-label],.document-cell a,#comparison {
+    scroll-margin-top:12px
   }
 }
