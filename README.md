@@ -22,7 +22,7 @@ Your files stay in the browser. Comparison runs in a Web Worker. There is no bac
 
 ## Development
 
-Use Node.js 24.22.2 from `.nvmrc` and install Google Chrome. The browser checks use the installed Chrome channel.
+Use Node.js 24. The browser tests run in your installed Google Chrome.
 
 ```sh
 npm ci
@@ -33,15 +33,7 @@ npm run dev
 npm run check
 ```
 
-`check` runs correctness lint, fixed comparison workloads with a parent-controlled 10-second worker watchdog, the Node tests, a production build, raw asset byte caps, and the production browser suite. It starts its own preview server on port 4173. Keep that port free. `npm test` runs only the Node tests. The workload checks assert complete output and page limits. They do not measure browser latency or memory.
-
-Change comparison rules in `src/compare.js` and test their output with the Node tests. Keep file selection and worker lifetime in `src/app.js`, and DOM work in `src/view.js`. Use `test/browser.spec.mjs` to check their behavior in the production build. The linter rejects direct DOM globals in the comparison engine.
-
-Use `npm run preview` to inspect a production build. To check a subdirectory build, set `VITE_BASE_PATH` for the complete command.
-
-```sh
-VITE_BASE_PATH=/example/ npm run check
-```
+`check` runs the Node tests, a production build, and the browser tests. `npm test` runs only the Node tests.
 
 ## Deployment
 

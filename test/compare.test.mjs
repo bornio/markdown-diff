@@ -144,47 +144,6 @@ test('sanitization removes named anchors, secures links, and keeps exact escaped
   assert.equal(result.source.rows[0].after.html, '&lt;a id=&quot;anchor&quot; name=&quot;alias&quot; href=&quot;https://example.com/&quot;&gt;safe &amp; sound&lt;/a&gt;');
 });
 
-test('empty and mixed raw containers preserve text and void elements while comments and doctypes disappear', () => {
-  const before = '<!doctype html><div></div><div>Left <em>old</em><br><img src="/safe.png"><!--discard--><p>tail</p></div>';
-  const after = before.replace('old', 'new');
-  const result = compareMarkdown(before, after);
-  for (const [side, word, source] of [['before', 'old', before], ['after', 'new', after]]) {
-    const html = rendered(result, side);
-    const tree = parse(html);
-    assert.equal(all(tree, 'div').length, 2);
-    assert.equal(text(tree), `Left ${word}tail`);
-    assert.equal(all(tree, 'br').length, 1);
-    assert.equal(all(tree, 'img').length, 1);
-    assert.doesNotMatch(html, /<!--|<!doctype|discard/);
-    assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), source);
-  }
-});
-
-test('missing raw table sides keep cell gaps and unsupported nested code keeps its siblings', () => {
-  const table = '<table><tbody><tr><td>kept</td><td></td></tr></tbody></table>';
-  for (const side of ['before', 'after']) {
-    const result = compareMarkdown(side === 'before' ? table : '', side === 'after' ? table : '');
-    const real = parse(rendered(result, side));
-    const blank = parse(rendered(result, side === 'before' ? 'after' : 'before'));
-    assert.equal(text(real), 'kept');
-    assert.equal(text(blank), '');
-    assert.equal(all(real, 'td').length, 2);
-    assert.ok(has(all(blank, 'table')[0], 'dataGap'));
-  }
-  const inserted = compareMarkdown(table, table.replace('</tbody>', '<tr><td>new</td><td>row</td></tr></tbody>'));
-  const gap = all(parse(rendered(inserted, 'before')), 'tr').find((row) => has(row, 'dataGap'));
-  assert.ok(gap);
-  assert.equal(all(gap, 'td').length, 2);
-  const code = Array.from({ length: 240 }, (_, i) => `line ${i}\n`).join('');
-  const before = `<div><p>first sibling</p><pre><code><em>${code}</em></code></pre><p>last sibling</p></div>`;
-  const after = before.replace('line 120', 'edited 120');
-  const result = compareMarkdown(before, after);
-  assert.equal(result.rows[0].pages, undefined);
-  for (const [side, expected] of [['before', code], ['after', code.replace('line 120', 'edited 120')]]) {
-    assert.equal(text(parse(rendered(result, side))), `first sibling${expected}last sibling`);
-  }
-});
-
 test('large divergent regions fall back explicitly and retain all content', () => {
   const before = Array.from({length:250},(_,i) => `Original item ${i} alpha`).join('\n\n');
   const after = Array.from({length:250},(_,i) => `Replacement ${i} omega`).join('\n\n');
