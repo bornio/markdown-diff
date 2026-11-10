@@ -291,6 +291,7 @@ main {
 }
 .file-name {
   display:block;
+  flex:1;
   min-width:0;
   font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
   color:var(--muted);
