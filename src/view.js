@@ -91,10 +91,15 @@ export function createComparisonView(container, chrome) {
   }
 
   function prepareDocument(node, side) {
-    if (node.querySelector('[data-format-change]')) {
+    const formats = node.querySelectorAll('[data-format-change]');
+    if (formats.length) {
       const description = 'Formatting or attributes changed. Source shows the Markdown syntax.';
       node.title = description;
       node.setAttribute('aria-description', description);
+      for (const format of formats) {
+        const target = format.matches('input[type=checkbox]') ? format.closest('li') || format : format;
+        target.dataset.formatCue = '';
+      }
     }
     for (const list of node.querySelectorAll('ol')) {
       let value = list.start;
