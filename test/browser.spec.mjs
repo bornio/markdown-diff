@@ -165,7 +165,12 @@ test('deferred native reads preserve independent sides and reject stale reads af
     };
     globalThis.replayOldWorker = () => {
       const { worker, data } = messages[0];
+      const handler = worker.onmessage;
+      let calls = 0;
+      worker.onmessage = (event) => { calls++; handler.call(worker, event); };
       worker.dispatchEvent(new globalThis.MessageEvent('message', { data }));
+      worker.onmessage = handler;
+      return calls;
     };
     const native = globalThis.File.prototype.arrayBuffer;
     const pending = new Map();
@@ -208,7 +213,7 @@ test('deferred native reads preserve independent sides and reject stale reads af
   await page.evaluate(() => globalThis.releaseRead('hold-swap.md'));
   await expect(page.locator('.document-cell[data-side=before]')).toHaveText('original right');
   await expect(page.locator('.document-cell[data-side=after]')).toHaveText('original left');
-  await page.evaluate(() => globalThis.replayOldWorker());
+  expect(await page.evaluate(() => globalThis.replayOldWorker())).toBe(1);
   await expect(page.locator('.document-cell[data-side=before]')).toHaveText('original right');
   await expect(page.locator('.document-cell[data-side=after]')).toHaveText('original left');
 });
