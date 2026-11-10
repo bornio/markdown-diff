@@ -6,6 +6,7 @@ import { diffArrays, diffLines, diffWordsWithSpace } from 'diff';
 
 const inline = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'td', 'th', 'pre', 'summary']);
 const block = new Set(['p', 'ul', 'ol', 'table', 'blockquote', 'pre', 'div']);
+const bodyHeaderNotice = 'Tables with body headers are shown as whole blocks to preserve header context.';
 const tag = (node) => node?.tagName || node?.type;
 const element = (tagName, properties = {}, children = []) => ({ type: 'element', tagName, properties, children });
 const nodeText = (node) => node.type === 'text' ? node.value : (node.children || []).map(nodeText).join('');
@@ -239,25 +240,43 @@ function hasCellSpan(node) {
     (node.children || []).some(hasCellSpan);
 }
 
-function rowSpanCrossesPage(body, pageSize) {
+function hasPersistentBodyHeader(row) {
+  const cells = row.children || [];
+  let allHeaders = cells.length > 0;
+  let hasAutoHeader = false;
+  for (const cell of cells) {
+    if (tag(cell) !== 'th') { allHeaders = false; continue; }
+    const scope = String(cell.properties.scope || '').toLowerCase();
+    if (['col', 'colgroup', 'rowgroup'].includes(scope)) return true;
+    hasAutoHeader ||= scope !== 'row';
+  }
+  return allHeaders && hasAutoHeader;
+}
+
+function tablePageBreakReason(body, pageSize) {
   const rows = body?.children || [];
-  return rows.some((row, index) => (row.children || []).some((cell) => {
-    const span = Number(cell.properties?.rowSpan ?? 1);
-    if (span !== 0 && !(span > 1)) return false;
-    const end = span === 0 ? rows.length : Math.min(rows.length, index + span);
-    return Math.floor(index / pageSize) !== Math.floor((end - 1) / pageSize);
-  }));
+  for (let index = 0; index < rows.length; index++) {
+    if (hasPersistentBodyHeader(rows[index])) return 'header';
+    for (const cell of rows[index].children || []) {
+      const span = Number(cell.properties?.rowSpan ?? 1);
+      if (span !== 0 && !(span > 1)) continue;
+      const end = span === 0 ? rows.length : Math.min(rows.length, index + span);
+      if (Math.floor(index / pageSize) !== Math.floor((end - 1) / pageSize)) return 'span';
+    }
+  }
 }
 
 function compareTable(a, b, state) {
   const sections = ['thead', 'tbody', 'tfoot'];
   const spans = [a, b].some((table) => hasCellSpan(table));
-  if (spans || [a, b].some((table) => sections.some((name) => table.children.filter((node) => tag(node) === name).length > 1))) {
+  const bodyHeaders = !spans && [a, b].some((table) => table.children.some((body) => tag(body) === 'tbody' && body.children.some(hasPersistentBodyHeader)));
+  if (spans || bodyHeaders || [a, b].some((table) => sections.some((name) => table.children.filter((node) => tag(node) === name).length > 1))) {
     a.properties['data-change'] = 'remove';
     b.properties['data-change'] = 'add';
     state.warnings.add(spans
       ? 'A table with merged cells is shown as removed and added blocks to preserve its layout.'
-      : 'A table with repeated sections is shown as removed and added blocks to preserve every row.');
+      : bodyHeaders ? bodyHeaderNotice
+        : 'A table with repeated sections is shown as removed and added blocks to preserve every row.');
     return;
   }
   const columnCells = (table) => {
@@ -562,9 +581,15 @@ function paginatedPair(a, b, state) {
   const bodyA = table ? a.children.find((node) => tag(node) === 'tbody') : list ? a : undefined;
   const bodyB = table ? b.children.find((node) => tag(node) === 'tbody') : list ? b : undefined;
   const count = Math.max(bodyA?.children.length || 0, bodyB?.children.length || 0);
-  if (table && count > pageSize && [bodyA, bodyB].some((body) => rowSpanCrossesPage(body, pageSize))) {
-    state.warnings.add('A table with row-spanning cells is shown whole instead of paginated to preserve its layout.');
-    return undefined;
+  if (table && count > pageSize) {
+    for (const body of [bodyA, bodyB]) {
+      const reason = tablePageBreakReason(body, pageSize);
+      if (!reason) continue;
+      state.warnings.add(reason === 'header'
+        ? bodyHeaderNotice
+        : 'A table with row-spanning cells is shown whole instead of paginated to preserve its layout.');
+      return undefined;
+    }
   }
   const fragment = (node, body, offset) => {
     const items = (body?.children || []).slice(offset, offset + pageSize);

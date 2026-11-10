@@ -307,6 +307,66 @@ test('row spans confined to repeated headers preserve bounded body pages', () =>
   }
 });
 
+test('scoped body headers retain their complete row group on both sides', () => {
+  for (const scope of ['rowgroup', 'col', 'colgroup', 'ROWGROUP', 'COL']) for (const span of [1, 2]) {
+    const before = rowspanTable(101, 0, span).replace(`<td rowspan="${span}">Shared group</td>`, `<th scope="${scope}" rowspan="${span}">Project Orion</th>`);
+    for (const changed of [false, true]) {
+      const other = changed ? before.replace('Entry 100', 'Updated task') : before;
+      for (const [left, right] of [[before, other], [other, before]]) {
+        const result = compareMarkdown(left, right);
+        assert.equal(result.rows[0].pages, undefined);
+        assert.ok(result.precision.warnings.some((warning) => warning.includes('body headers')));
+        for (const [side, original] of [['before', left], ['after', right]]) {
+          const body = all(parse(result.rows[0][side]), 'tbody')[0];
+          const header = all(body, 'th')[0];
+          assert.equal(String(header.properties.scope).toLowerCase(), scope.toLowerCase());
+          assert.equal(header.properties.rowSpan, span);
+          assert.equal(text(header), 'Project Orion');
+          assert.equal(body.children.filter((node) => node.tagName === 'tr').length, 101);
+          assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), original);
+        }
+      }
+    }
+  }
+});
+
+test('implicit column headers in a body stay with their data', () => {
+  const rows = Array.from({ length: 101 }, (_, i) => `<tr><td>Project ${i}</td><td>Ready</td></tr>`).join('\n');
+  const value = `<table><tbody><tr><th>Project</th><th>Status</th></tr>${rows}</tbody></table>`;
+  const expanded = value.replace('<th>Status</th>', '<th>Status</th><th>Owner</th>').replaceAll('</td></tr>', '</td><td>Maya</td></tr>');
+  for (const [left, right] of [[value, value], [value, expanded], [expanded, value]]) {
+    const result = compareMarkdown(left, right);
+    assert.equal(result.rows[0].pages, undefined);
+    assert.ok(result.precision.warnings.some((warning) => warning.includes('body headers')));
+    for (const [side, original] of [['before', left], ['after', right]]) {
+      const body = all(parse(result.rows[0][side]), 'tbody')[0];
+      assert.equal(body.children.filter((node) => node.tagName === 'tr').length, 102);
+      assert.deepEqual(all(body, 'th').map(text), original === expanded ? ['Project', 'Status', 'Owner'] : ['Project', 'Status']);
+      assert.doesNotMatch(result.rows[0][side], /data-gap/);
+      assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), original);
+    }
+  }
+});
+
+test('row-local and mixed automatic body headers retain bounded pages', () => {
+  for (const scope of ['row', 'ROW', '']) {
+    const rows = Array.from({ length: 215 }, (_, i) => `<tr><th${scope ? ` scope="${scope}"` : ''}>Project ${i}</th><td>Entry ${i}</td></tr>`).join('\n');
+    const value = `<table><thead><tr><th>Project</th><th>Entry</th></tr></thead><tbody>${rows}</tbody></table>`;
+    const result = compareMarkdown(value, value);
+    assert.equal(result.precision.level, 'word');
+    for (const side of ['before', 'after']) {
+      const pages = result.rows[0].pages.map((page) => parse(page[side]));
+      assert.deepEqual(pages.map((page) => all(page, 'tbody')[0].children.filter((node) => node.tagName === 'tr').length), [100, 100, 15]);
+      assert.deepEqual(pages.flatMap((page) => all(all(page, 'tbody')[0], 'th')).map(text), Array.from({ length: 215 }, (_, i) => `Project ${i}`));
+      assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), value);
+    }
+  }
+  const value = rowspanTable(1000, 0, 2).replace('<td rowspan="2">Shared group</td>', '<th scope="row" rowspan="2">Shared group</th>');
+  const result = compareMarkdown(value, value);
+  assert.equal(result.precision.level, 'word');
+  assert.equal(result.rows[0].pages.length, 10);
+});
+
 test('ordered list pages preserve numbering and all items', () => {
   const value = Array.from({length:215},(_,i) => `${i+7}. Item ${i}`).join('\n');
   const result = compareMarkdown(value, value.replace('Item 102','Edited 102'));
@@ -356,7 +416,8 @@ test('code pages keep long edited text and surrogate pairs across cuts', () => {
   assert.ok(has(all(parse(row.pages[1].after), 'pre')[0], 'dataGap'));
 });
 
-test('code pages bound annotation nodes without changing which text is marked', () => {
+test('code pages bound annotation nodes without changing which text is marked', (t) => {
+  t.mock.method(Date, 'now', () => 0);
   const before = 'keep ' + 'old shared '.repeat(100) + 'tail';
   const after = 'keep ' + 'new shared '.repeat(100) + 'tail';
   const row = compareMarkdown(fence(before), fence(after)).rows[0];
@@ -368,6 +429,20 @@ test('code pages bound annotation nodes without changing which text is marked', 
     expected.at(-1)[1] += 'tail\n';
     assert.deepEqual(coverage(codePages(row, side)), expected);
     for (const page of row.pages) assert.ok(count(all(parse(page[side]), 'pre')[0]) <= 256);
+  }
+});
+
+test('elapsed work limits keep complete code and source with coarse highlighting', (t) => {
+  let time = 0;
+  t.mock.method(Date, 'now', () => time += 50);
+  const before = fence('keep ' + 'old shared '.repeat(100) + 'tail');
+  const after = fence('keep ' + 'new shared '.repeat(100) + 'tail');
+  const result = compareMarkdown(before, after);
+  assert.equal(result.precision.level, 'coarse');
+  assert.ok(result.precision.warnings.length > 0);
+  for (const [side, value] of [['before', before], ['after', after]]) {
+    assert.equal(text(all(parse(rendered(result, side)), 'code')[0]), value.slice(value.indexOf('\n') + 1, value.lastIndexOf('```')));
+    assert.equal(result.source.rows.map((row) => row[side]?.text || '').join(''), value);
   }
 });
 
