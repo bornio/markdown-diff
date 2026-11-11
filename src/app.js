@@ -1,59 +1,26 @@
 import './style.css';
 import './theme.js';
 import { example } from './example.js';
+import { createComparisonChrome } from './chrome.js';
 import { createComparisonView } from './view.js';
 
 const $ = (selector) => document.querySelector(selector);
-const statusText = {
-  empty: 'Ready when you are',
-  reading: 'Reading files…',
-  working: 'Comparing files…',
-  identical: 'Files are identical',
-  'rendered-same': 'Same rendered content',
-  different: 'Comparison ready',
-  'open-error': 'Could not open file',
-  'compare-error': 'Comparison stopped',
-  editing: 'Edits not compared',
-};
-const filenameSegments = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
 const state = {
   pair: { before: null, after: null }, view: 'rendered', requestId: 0,
   selectionId: 0, readIds: { before: 0, after: 0 }, worker: null,
   timeout: null, result: null, status: 'empty', selectionNotice: '', editing: false,
 };
+const SIDES = ['before', 'after'];
 const comparison = $('#comparison');
-const status = $('#status');
 const notice = $('#notice');
 const editor = $('#editor');
 const drafts = { before: $('#editor [data-side=before]'), after: $('#editor [data-side=after]') };
-const display = createComparisonView(comparison, $('#comparison-chrome'));
-const filenames = ['before', 'after'].map((side) => ({ side, element: $(`#${side}-name`), renderedName: null }));
-let filenameFrame = 0;
-
-function filenameTruncated(name) {
-  return [...name.querySelectorAll('.file-name-value > span')].some((part) => part.scrollWidth > part.clientWidth);
-}
-function scheduleFilenames() {
-  if (filenameFrame) return;
-  filenameFrame = requestAnimationFrame(() => {
-    filenameFrame = 0;
-    for (const { side, element: name } of filenames) {
-      const expandable = !!state.pair[side] && (name.open || filenameTruncated(name));
-      name.classList.toggle('expandable', expandable);
-      const summary = name.querySelector('summary');
-      summary.tabIndex = expandable ? 0 : -1;
-      summary.setAttribute('aria-disabled', String(!expandable));
-    }
-  });
-}
-const filenameResize = new ResizeObserver(scheduleFilenames);
-for (const { side, element: name } of filenames) {
-  filenameResize.observe(name);
-  name.addEventListener('toggle', scheduleFilenames);
-  name.querySelector('summary').addEventListener('click', (event) => {
-    if (!state.pair[side] || (!name.open && !filenameTruncated(name))) event.preventDefault();
-  });
-}
+const chrome = createComparisonChrome($('#comparison-chrome'), $('#file-sheet'), {
+  mode: setMode, clear, swap, readFiles, currentDoc,
+  paste: pasteFromClipboard,
+  save: (side) => saveCopy(currentDoc(side)),
+});
+const display = createComparisonView(comparison, chrome);
 
 function cancelWorker() {
   state.worker?.terminate();
@@ -68,39 +35,13 @@ function message(text, error = false) {
   notice.hidden = !combined;
   notice.classList.toggle('error', error);
 }
-function updateChrome() {
-  for (const label of filenames) {
-    const { side, element: name } = label;
-    const summary = name.querySelector('summary');
-    const filename = state.pair[side]?.name || (side === 'before' ? 'Original' : 'Changed');
-    const shown = state.pair[side]?.edited ? `${filename} (edited)` : filename;
-    if (label.renderedName !== shown) {
-      const segments = filenameSegments ? [...filenameSegments.segment(shown)].map(({ segment }) => segment) : [];
-      const start = document.createElement('span');
-      start.className = 'file-name-start';
-      start.textContent = filenameSegments ? segments.slice(0, -20).join('') : shown;
-      const end = document.createElement('span');
-      end.className = 'file-name-end';
-      end.textContent = segments.slice(-20).join('');
-      const value = document.createElement('bdi');
-      value.className = 'file-name-value';
-      value.append(start, end);
-      summary.replaceChildren(value);
-      name.title = filename;
-      label.renderedName = shown;
-      name.open = false;
-    }
-    name.classList.toggle('loaded', !!state.pair[side]);
-    $(`.file-download[data-side=${side}]`).hidden = !(state.pair[side]?.edited || (state.editing && state.pair[side]));
-  }
+function render() {
   const loaded = !!(state.pair.before || state.pair.after);
   const busy = state.status === 'reading' || state.status === 'working';
-  $('.app').classList.toggle('has-files', loaded);
-  $('.view-switch').hidden = !loaded;
-  $('#swap').hidden = !loaded;
-  $('#clear').hidden = !loaded && state.status === 'empty';
-  $('#swap').disabled = !loaded;
-  $('#clear').disabled = !loaded && !['reading', 'open-error', 'compare-error'].includes(state.status);
+  chrome.render({
+    mode: state.editing ? 'edit' : state.view, docs: { ...state.pair },
+    status: state.status, stats: state.result?.stats ?? null, loaded, busy,
+  });
   const refocus = !state.editing && editor.contains(document.activeElement);
   comparison.hidden = !loaded || state.editing;
   editor.hidden = !state.editing;
@@ -110,17 +51,6 @@ function updateChrome() {
   if (state.view === 'source' && loaded) comparison.title = 'Click to edit';
   else comparison.removeAttribute('title');
   comparison.setAttribute('aria-busy', String(busy));
-  $('.comparison-summary').classList.toggle('busy', busy);
-  const statusLabel = statusText[state.status];
-  if (status.textContent !== statusLabel) status.textContent = statusLabel;
-  status.classList.toggle('sr-only', state.status === 'empty' || state.status === 'different' || state.status === 'editing' ||
-    (state.status === 'rendered-same' && state.view === 'source'));
-  $('#stats').hidden = busy || state.editing || !state.result || !$('#stats').textContent;
-  $('#compare-edits').hidden = !state.editing;
-  $('#compare-edits').disabled = busy;
-  $('#rendered-view').setAttribute('aria-pressed', String(state.view === 'rendered'));
-  $('#source-view').setAttribute('aria-pressed', String(state.view === 'source'));
-  scheduleFilenames();
 }
 function startComparison() {
   state.editing = false;
@@ -129,8 +59,7 @@ function startComparison() {
   state.result = null;
   state.status = 'working';
   display.reset();
-  $('#stats').textContent = '';
-  updateChrome();
+  render();
   const requestId = state.requestId;
   const worker = new Worker(new URL('./compare.worker.js', import.meta.url), { type: 'module' });
   state.worker = worker;
@@ -138,7 +67,7 @@ function startComparison() {
     if (requestId !== state.requestId) return;
     cancelWorker();
     state.status = 'compare-error';
-    message(`${text} Your text is open for editing. Fix it and press Compare, or choose another file.`, true);
+    message(`${text} Your text is open for editing. Fix it and choose Rendered or Source, or drop another file.`, true);
     openEditor('after');
   };
   worker.onmessage = ({ data }) => {
@@ -151,12 +80,9 @@ function startComparison() {
     state.result = data.comparison;
     const { added, removed, changed } = state.result.stats;
     state.status = !added && !removed && !changed ? 'identical' : state.result.rows.every((row) => row.kind === 'same') ? 'rendered-same' : 'different';
-    $('#stats').innerHTML = [added ? `<span class="stat-add" aria-label="${added} added ${added === 1 ? 'line' : 'lines'}">${added} added</span>` : '',
-      removed ? `<span class="stat-remove" aria-label="${removed} removed ${removed === 1 ? 'line' : 'lines'}">${removed} removed</span>` : '',
-      changed ? `${changed} changed ${changed === 1 ? 'line' : 'lines'}` : ''].filter(Boolean).join(' <span aria-hidden="true">·</span> ');
     message(state.result.precision.warnings.length ? `Simplified comparison. ${state.result.precision.warnings.join(' ')}` : '');
-    updateChrome();
-    display.reset(state.result, Object.fromEntries(filenames.map(({ side }) => [side, state.pair[side]?.name || 'Empty document'])));
+    render();
+    display.reset(state.result, Object.fromEntries(SIDES.map((side) => [side, state.pair[side]?.name || 'Empty document'])));
     display.show(state.view);
   };
   worker.onerror = () => fail('Could not read this Markdown document.');
@@ -174,7 +100,7 @@ async function readFiles(files, side) {
   state.status = 'reading';
   state.selectionNotice = files.length > 2 ? 'Only the first two files were selected. Drop another file on either side to replace it.' : '';
   message('');
-  updateChrome();
+  render();
   try {
     const documents = await Promise.all(chosen.map(async (file) => {
       if (!/\.(md|markdown|txt|mdx)$/i.test(file.name)) throw new Error('Choose a .md, .markdown, .txt, or .mdx text file.');
@@ -191,7 +117,7 @@ async function readFiles(files, side) {
     if (state.editing && chosen.length === 1) {
       for (const [target, { text }] of accepted) drafts[target].value = text;
       state.status = 'editing';
-      updateChrome();
+      render();
       return;
     }
     startComparison();
@@ -199,7 +125,7 @@ async function readFiles(files, side) {
     if (targets.every((target) => state.readIds[target] !== selectionId)) return;
     state.status = 'open-error';
     message(error.message, true);
-    updateChrome();
+    render();
   }
 }
 function dropPendingReads() {
@@ -209,8 +135,8 @@ function dropPendingReads() {
 function openEditor(side, line = 1) {
   for (const [key, textarea] of Object.entries(drafts)) textarea.value = state.pair[key]?.text ?? '';
   state.editing = true;
-  updateChrome();
-  window.scrollTo({ top: 0, behavior: 'instant' });
+  render();
+  chrome.scrollTo(0);
   const textarea = drafts[side];
   const caret = textarea.value.split('\n', line - 1).join('\n').length + (line > 1 ? 1 : 0);
   textarea.focus({ preventScroll: true });
@@ -225,11 +151,13 @@ function startEditing(side, line) {
 const newName = (side) => side === 'before' ? 'Original.md' : 'Changed.md';
 // Textareas turn CRLF into LF, so an untouched side is compared in that form and keeps its original text.
 const draftChanged = (side) => drafts[side].value !== (state.pair[side]?.text ?? '').replace(/\r\n?/g, '\n');
+function currentDoc(side) {
+  return state.editing && draftChanged(side)
+    ? { name: state.pair[side]?.name || newName(side), text: drafts[side].value, edited: true }
+    : state.pair[side];
+}
 function syncDrafts() {
-  if (!state.editing) return;
-  for (const side of ['before', 'after']) {
-    if (draftChanged(side)) state.pair[side] = { name: state.pair[side]?.name || newName(side), text: drafts[side].value, edited: true };
-  }
+  for (const side of SIDES) state.pair[side] = currentDoc(side);
 }
 function lineAt(cell) {
   for (let row = cell?.closest('.pair-row'); row; row = row.previousElementSibling) {
@@ -247,42 +175,28 @@ comparison.addEventListener('click', (event) => {
 comparison.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && event.target === comparison && canEdit()) startEditing('after');
 });
-editor.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); $('#compare-edits').click(); }
-});
-$('#compare-edits').onclick = () => {
+function compareEdits() {
   syncDrafts();
   if (!state.pair.before && !state.pair.after) return;
   startComparison();
   comparison.focus({ preventScroll: true });
-};
+}
+editor.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); compareEdits(); }
+});
 window.addEventListener('beforeunload', (event) => {
   if (state.pair.before?.edited || state.pair.after?.edited || (state.editing && (draftChanged('before') || draftChanged('after')))) {
     event.preventDefault();
     event.returnValue = true;
   }
 });
-for (const { side } of filenames) {
-  const input = $(`#${side}-input`);
-  input.onchange = () => { readFiles(input.files, side); input.value = ''; };
-  $(`.file-browse[data-side=${side}]`).onclick = () => input.click();
-  $(`.file-download[data-side=${side}]`).onclick = () => {
-    syncDrafts();
-    updateChrome();
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(new Blob([state.pair[side]?.text ?? ''], { type: 'text/markdown' }));
-    link.download = state.pair[side]?.name || newName(side);
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(link.href));
-  };
-}
-$('#swap').onclick = () => {
+function swap() {
   syncDrafts();
   dropPendingReads();
   state.pair = { before: state.pair.after, after: state.pair.before };
   startComparison();
-};
-$('#clear').onclick = () => {
+}
+function clear() {
   dropPendingReads();
   cancelWorker();
   state.pair = { before: null, after: null };
@@ -290,21 +204,43 @@ $('#clear').onclick = () => {
   state.status = 'empty';
   display.reset();
   state.selectionNotice = '';
-  $('#stats').textContent = '';
   message('');
   openEditor('before');
-};
-for (const view of ['rendered', 'source']) $(`#${view}-view`).onclick = () => {
-  if (state.view === view && !state.editing) return;
-  state.view = view;
-  if (state.editing) {
-    syncDrafts();
-    startComparison();
+}
+function setMode(mode) {
+  if (mode === 'edit') {
+    if (!state.editing) startEditing('after');
     return;
   }
-  updateChrome();
-  display.show(view);
-};
+  if (state.view === mode && !state.editing) return;
+  state.view = mode;
+  if (state.editing) {
+    compareEdits();
+    render();
+    return;
+  }
+  render();
+  display.show(mode);
+}
+const pastedFile = (text) => new File([text], 'Pasted text.md');
+async function pasteFromClipboard(side) {
+  let text;
+  try { text = await navigator.clipboard.readText(); }
+  catch { message('This browser blocked clipboard access. Choose Edit, then touch and hold in a box to paste.', true); return; }
+  if (text) readFiles([pastedFile(text)], side);
+}
+async function saveCopy({ name, text }) {
+  const file = new File([text], name, { type: 'text/markdown' });
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); } catch {}
+    return;
+  }
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(file);
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href));
+}
 let dragDepth = 0;
 document.addEventListener('dragenter', (event) => {
   if (!event.dataTransfer.types.includes('Files')) return;
@@ -342,7 +278,7 @@ document.addEventListener('paste', (event) => {
   if (!files.length && !text) return;
   event.preventDefault();
   const side = document.activeElement?.closest('[data-side]')?.dataset.side || (state.pair.before ? 'after' : 'before');
-  readFiles(files.length ? files : [new File([text], 'Pasted text.md')], side);
+  readFiles(files.length ? files : [pastedFile(text)], side);
 });
 
 if (location.pathname.replace(/\/$/, '') === `${import.meta.env.BASE_URL}example`) {

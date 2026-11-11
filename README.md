@@ -6,15 +6,17 @@ Compare Markdown files side by side, with changes inside rendered tables, lists,
 
 ## Compare files
 
-The page opens in the editor. Type or paste the original on the left and the changed version on the right, or open or drop a file into either side, then press Compare (or ⌘/Ctrl+Enter). Dropping two files together compares them right away: the first is the original and the second the changed version. Use the swap arrows to reverse them.
+The page opens in the editor. Type or paste the original on the left and the changed version on the right, or drop a file onto either side, then choose Rendered or Source (or press ⌘/Ctrl+Enter). Dropping two files together compares them right away: the first is the original and the second the changed version. Use the swap arrows to reverse them.
 
-While viewing a comparison, dropping, opening or pasting a file replaces one side and compares again; a paste fills the original first if it is empty, otherwise the changed side.
+While viewing a comparison, dropping a file on a filename or pasting one replaces that side and compares again; a paste fills the original first if it is empty, otherwise the changed side.
 
-To edit after comparing, click a line in Source. The comparison pauses while you type; press Compare (or ⌘/Ctrl+Enter) to update it. Edited sides are marked and can be downloaded. If a comparison fails, the editor opens so you can fix the text and try again.
+To edit after comparing, choose Edit or click a line in Source. The comparison pauses while you type; choose Rendered or Source (or press ⌘/Ctrl+Enter) to update it. Edited sides are marked. If a comparison fails, the editor opens so you can fix the text and try again.
 
 Click a truncated filename to expand it, then click again to collapse it. Tab and Enter or Space work too. Names that already fit stay plain.
 
-Use Rendered or Source to switch views. The sun or moon switches between light and dark. Upload icons choose local files; the × clears the comparison. Each control has a hover hint and an accessible label. The app accepts UTF-8 `.md`, `.markdown`, `.txt`, and `.mdx` files. It treats `.mdx` as Markdown and does not execute components.
+On a touch screen, tap a filename to open a file, paste from the clipboard, save or share a copy, or swap sides. On a phone, the filename row also slides away while you scroll down and comes back when you scroll up; Rendered, Source, and Edit stay at the top.
+
+Use Rendered, Source, or Edit at the top to switch modes. The sun or moon switches between light and dark, and the × clears the comparison. The logo opens this repository on GitHub in a new tab. Each control has a hover hint and an accessible label. The app accepts UTF-8 `.md`, `.markdown`, `.txt`, and `.mdx` files. It treats `.mdx` as Markdown and does not execute components.
 
 GitHub Flavored Markdown support includes tables, task lists, nested lists, fenced code, strikethrough, and links. Large tables, lists, and supported code blocks use pages. You cannot select text across rendered pages. Source retains the complete file. A notice identifies comparisons that use simpler highlighting after a work limit.
 
