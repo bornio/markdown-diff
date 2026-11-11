@@ -334,9 +334,15 @@ test.describe('on a touch phone', () => {
     // Use the download fallback; real phones get the share sheet.
     await page.addInitScript(() => Object.defineProperty(globalThis.navigator, 'canShare', { value: undefined }));
     await page.goto('./');
+    const sheet = page.locator('#file-sheet');
+    await page.locator('#before-name summary').tap();
+    await expect(sheet).toBeVisible();
+    await expect(page.locator('#file-sheet-name')).toHaveText('No file yet');
+    await expect(sheet.getByRole('button', { name: 'Save or share a copy' })).toBeHidden();
+    await page.touchscreen.tap(195, 200);
+    await expect(sheet).toBeHidden();
     await drop(page, 'before', [file('left.md', '# Title\n\nold words\n'), file('right.md', '# Title\n\nnew words\n')]);
     await expect(page.locator('#status')).toHaveText('Comparison ready');
-    const sheet = page.locator('#file-sheet');
     await page.locator('#after-name summary').tap();
     await expect(sheet).toBeVisible();
     await expect(page.locator('#after-name')).not.toHaveAttribute('open');
