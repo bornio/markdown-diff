@@ -14,9 +14,9 @@ To edit after comparing, choose Edit or click a line in Source. The comparison p
 
 Click a truncated filename to expand it, then click again to collapse it. Tab and Enter or Space work too. Names that already fit stay plain.
 
-On a touch phone, tap a filename to open a file, paste from the clipboard, save or share a copy, or swap sides. The filename row slides away while you scroll down and comes back when you scroll up; Rendered, Source, and Edit stay at the top.
+On a touch screen, tap a filename to open a file, paste from the clipboard, save or share a copy, or swap sides. On a phone, the filename row also slides away while you scroll down and comes back when you scroll up; Rendered, Source, and Edit stay at the top.
 
-Use Rendered, Source, or Edit at the top to switch modes. The sun or moon switches between light and dark, and the × clears the comparison. Each control has a hover hint and an accessible label. The app accepts UTF-8 `.md`, `.markdown`, `.txt`, and `.mdx` files. It treats `.mdx` as Markdown and does not execute components.
+Use Rendered, Source, or Edit at the top to switch modes. The sun or moon switches between light and dark, and the × clears the comparison. The logo opens this repository on GitHub in a new tab. Each control has a hover hint and an accessible label. The app accepts UTF-8 `.md`, `.markdown`, `.txt`, and `.mdx` files. It treats `.mdx` as Markdown and does not execute components.
 
 GitHub Flavored Markdown support includes tables, task lists, nested lists, fenced code, strikethrough, and links. Large tables, lists, and supported code blocks use pages. You cannot select text across rendered pages. Source retains the complete file. A notice identifies comparisons that use simpler highlighting after a work limit.
 
