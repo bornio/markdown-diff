@@ -1,6 +1,7 @@
 import './style.css';
 import './theme.js';
 import { example } from './example.js';
+import { createComparisonChrome } from './chrome.js';
 import { createComparisonView } from './view.js';
 
 const $ = (selector) => document.querySelector(selector);
@@ -26,13 +27,12 @@ const status = $('#status');
 const notice = $('#notice');
 const editor = $('#editor');
 const drafts = { before: $('#editor [data-side=before]'), after: $('#editor [data-side=after]') };
-const display = createComparisonView(comparison, $('#comparison-chrome'));
+const chrome = createComparisonChrome($('#comparison-chrome'), $('#file-sheet'), { mode: setMode, clear, swap });
+const display = createComparisonView(comparison, chrome);
 const filenames = ['before', 'after'].map((side) => ({ side, element: $(`#${side}-name`), renderedName: null }));
 // On touch phones the filenames open a sheet of file actions, and the filename row hides while reading.
 const phone = matchMedia('(pointer: coarse) and (max-width: 700px)');
 const sheet = $('#file-sheet');
-const chrome = $('#comparison-chrome');
-const title = $('.comparison-title');
 let filenameFrame = 0;
 
 function filenameTruncated(name) {
@@ -77,7 +77,7 @@ function message(text, error = false) {
   notice.hidden = !combined;
   notice.classList.toggle('error', error);
 }
-function updateChrome() {
+function render() {
   for (const label of filenames) {
     const { side, element: name } = label;
     const summary = name.querySelector('summary');
@@ -103,10 +103,10 @@ function updateChrome() {
   }
   const loaded = !!(state.pair.before || state.pair.after);
   const busy = state.status === 'reading' || state.status === 'working';
-  $('.app').classList.toggle('has-files', loaded);
-  $('#clear').hidden = !loaded && state.status === 'empty';
-  $('#swap').disabled = !loaded;
-  $('#clear').disabled = !loaded && !['reading', 'open-error', 'compare-error'].includes(state.status);
+  chrome.render({
+    mode: state.editing ? 'edit' : state.view, docs: { ...state.pair },
+    status: state.status, stats: state.result?.stats ?? null, loaded, busy,
+  });
   const refocus = !state.editing && editor.contains(document.activeElement);
   comparison.hidden = !loaded || state.editing;
   editor.hidden = !state.editing;
@@ -122,13 +122,6 @@ function updateChrome() {
   status.classList.toggle('sr-only', state.status === 'empty' || state.status === 'different' ||
     (state.status === 'rendered-same' && state.view === 'source'));
   $('#stats').hidden = busy || state.editing || !state.result || !$('#stats').textContent;
-  $('#rendered-view').setAttribute('aria-pressed', String(!state.editing && state.view === 'rendered'));
-  $('#source-view').setAttribute('aria-pressed', String(!state.editing && state.view === 'source'));
-  $('#edit-view').setAttribute('aria-pressed', String(state.editing));
-  $('#edit-view').disabled = busy && !state.editing;
-  // Native apps bring their bars back when you change screens, so a mode change shows the filename row.
-  const mode = state.editing ? 'edit' : state.view;
-  if (mode !== shownMode) { shownMode = mode; showTitle(); }
   scheduleFilenames();
 }
 function startComparison() {
@@ -139,7 +132,7 @@ function startComparison() {
   state.status = 'working';
   display.reset();
   $('#stats').textContent = '';
-  updateChrome();
+  render();
   const requestId = state.requestId;
   const worker = new Worker(new URL('./compare.worker.js', import.meta.url), { type: 'module' });
   state.worker = worker;
@@ -164,7 +157,7 @@ function startComparison() {
       removed ? `<span class="stat-remove" aria-label="${removed} removed ${removed === 1 ? 'line' : 'lines'}">${removed} removed</span>` : '',
       changed ? `${changed} changed ${changed === 1 ? 'line' : 'lines'}` : ''].filter(Boolean).join(' <span aria-hidden="true">·</span> ');
     message(state.result.precision.warnings.length ? `Simplified comparison. ${state.result.precision.warnings.join(' ')}` : '');
-    updateChrome();
+    render();
     display.reset(state.result, Object.fromEntries(filenames.map(({ side }) => [side, state.pair[side]?.name || 'Empty document'])));
     display.show(state.view);
   };
@@ -183,7 +176,7 @@ async function readFiles(files, side) {
   state.status = 'reading';
   state.selectionNotice = files.length > 2 ? 'Only the first two files were selected. Drop another file on either side to replace it.' : '';
   message('');
-  updateChrome();
+  render();
   try {
     const documents = await Promise.all(chosen.map(async (file) => {
       if (!/\.(md|markdown|txt|mdx)$/i.test(file.name)) throw new Error('Choose a .md, .markdown, .txt, or .mdx text file.');
@@ -200,7 +193,7 @@ async function readFiles(files, side) {
     if (state.editing && chosen.length === 1) {
       for (const [target, { text }] of accepted) drafts[target].value = text;
       state.status = 'editing';
-      updateChrome();
+      render();
       return;
     }
     startComparison();
@@ -208,7 +201,7 @@ async function readFiles(files, side) {
     if (targets.every((target) => state.readIds[target] !== selectionId)) return;
     state.status = 'open-error';
     message(error.message, true);
-    updateChrome();
+    render();
   }
 }
 function dropPendingReads() {
@@ -218,8 +211,8 @@ function dropPendingReads() {
 function openEditor(side, line = 1) {
   for (const [key, textarea] of Object.entries(drafts)) textarea.value = state.pair[key]?.text ?? '';
   state.editing = true;
-  updateChrome();
-  window.scrollTo({ top: 0, behavior: 'instant' });
+  render();
+  chrome.scrollTo(0);
   const textarea = drafts[side];
   const caret = textarea.value.split('\n', line - 1).join('\n').length + (line > 1 ? 1 : 0);
   textarea.focus({ preventScroll: true });
@@ -271,13 +264,13 @@ window.addEventListener('beforeunload', (event) => {
     event.returnValue = true;
   }
 });
-$('#swap').onclick = () => {
+function swap() {
   syncDrafts();
   dropPendingReads();
   state.pair = { before: state.pair.after, after: state.pair.before };
   startComparison();
-};
-$('#clear').onclick = () => {
+}
+function clear() {
   dropPendingReads();
   cancelWorker();
   state.pair = { before: null, after: null };
@@ -288,21 +281,22 @@ $('#clear').onclick = () => {
   $('#stats').textContent = '';
   message('');
   openEditor('before');
-};
-for (const view of ['rendered', 'source']) $(`#${view}-view`).onclick = () => {
-  if (state.view === view && !state.editing) return;
-  state.view = view;
-  if (state.editing) {
-    compareEdits();
-    updateChrome();
+}
+function setMode(mode) {
+  if (mode === 'edit') {
+    if (!state.editing) startEditing('after');
     return;
   }
-  updateChrome();
-  display.show(view);
-};
-$('#edit-view').onclick = () => {
-  if (!state.editing) startEditing('after');
-};
+  if (state.view === mode && !state.editing) return;
+  state.view = mode;
+  if (state.editing) {
+    compareEdits();
+    render();
+    return;
+  }
+  render();
+  display.show(mode);
+}
 function openSheet(side) {
   syncDrafts();
   sheet.dataset.side = side;
@@ -342,7 +336,7 @@ const sheetActions = {
     if (text) readFiles([new File([text], 'Pasted text.md')], side);
   },
   save: (side) => saveCopy(side),
-  swap: () => $('#swap').click(),
+  swap: () => swap(),
 };
 sheet.addEventListener('click', (event) => {
   if (event.target.closest('[data-sheet-close]')) { closeSheet(); return; }
@@ -361,50 +355,7 @@ $('#file-input').onchange = () => {
   input.value = '';
 };
 
-// While reading on a phone, the filename row slides up under the controls. It tracks the scroll 1:1 with no
-// easing, comes back as soon as the scroll reverses, and settles fully shown or hidden once scrolling stops.
-let titleHidden = 0;
-let shownMode = null;
-let lastScroll = 0;
-let ignoreScroll = false;
-let settleTimer = 0;
-let scrollEndTimer = 0;
-function publishTitle() {
-  const range = phone.matches ? title.offsetHeight : 0;
-  titleHidden = Math.min(titleHidden, range);
-  chrome.style.setProperty('--title-hidden', `${titleHidden}px`);
-  chrome.style.setProperty('--title-progress', range ? (titleHidden / range).toFixed(3) : '0');
-}
-function settleTitle(target) {
-  chrome.setAttribute('data-settling', '');
-  titleHidden = target;
-  publishTitle();
-  clearTimeout(settleTimer);
-  settleTimer = setTimeout(() => chrome.removeAttribute('data-settling'), 240);
-}
-function showTitle() {
-  // A view change restores its own scroll position; that jump is not the reader scrolling.
-  ignoreScroll = true;
-  requestAnimationFrame(() => requestAnimationFrame(() => { lastScroll = Math.max(scrollY, 0); ignoreScroll = false; }));
-  if (titleHidden) settleTitle(0);
-}
-addEventListener('scroll', () => {
-  const y = Math.max(scrollY, 0); // iOS reports negative values while rubber-banding at the top.
-  if (!phone.matches || ignoreScroll || sheet.hasAttribute('data-open')) { lastScroll = y; return; }
-  chrome.removeAttribute('data-settling');
-  // Never hide more than has scrolled, so the row can't cover the top of the document.
-  titleHidden = Math.min(Math.max(titleHidden + y - lastScroll, 0), title.offsetHeight, y);
-  lastScroll = y;
-  publishTitle();
-  clearTimeout(scrollEndTimer);
-  scrollEndTimer = setTimeout(() => {
-    const range = title.offsetHeight;
-    if (titleHidden > 0 && titleHidden < range) settleTitle(titleHidden >= range / 2 && scrollY >= range ? range : 0);
-  }, 140);
-}, { passive: true });
 phone.addEventListener('change', () => {
-  titleHidden = 0;
-  publishTitle();
   closeSheet();
   scheduleFilenames();
 });

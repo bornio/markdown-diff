@@ -8,10 +8,6 @@ export function createComparisonView(container, chrome) {
   let frame = 0;
   let resetSizes = false;
   const views = new Map();
-  const obscuredHeight = () => getComputedStyle(chrome).position === 'sticky' ? chrome.getBoundingClientRect().height : 0;
-  const publishChromeHeight = () => document.documentElement.style.setProperty('--chrome-height', `${obscuredHeight()}px`);
-  const chromeSize = new ResizeObserver(publishChromeHeight);
-  chromeSize.observe(chrome);
   const nearRows = new Set();
   const activeRows = new Set();
   const measuredHeights = new WeakMap();
@@ -178,8 +174,7 @@ export function createComparisonView(container, chrome) {
         page = destination;
         fill();
         scheduleAlignment(true);
-        const top = window.scrollY + pager.getBoundingClientRect().top - obscuredHeight() - 8;
-        window.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
+        chrome.scrollTo(pager);
       };
       back.onclick = () => turn(-1);
       next.onclick = () => turn(1);
@@ -249,7 +244,7 @@ export function createComparisonView(container, chrome) {
     const view = views.get(mode) || createView(mode);
     current = view;
     container.replaceChildren(view.root);
-    window.scrollTo({ top: view.scroll, behavior: 'instant' });
+    chrome.scrollTo(view.scroll);
     for (const row of nearRows) {
       if (!row.isConnected || !view.root.contains(row)) continue;
       activeRows.add(row);
@@ -322,9 +317,6 @@ export function createComparisonView(container, chrome) {
       if (right === details) left.open = !details.open;
     }
   });
-  window.addEventListener('resize', () => {
-    publishChromeHeight();
-    scheduleAlignment(true);
-  });
+  window.addEventListener('resize', () => scheduleAlignment(true));
   return { reset, show };
 }

@@ -172,6 +172,8 @@ button[hidden],[hidden] {
   flex-direction:column
 }
 #comparison-chrome {
+  --file-menu:none;
+  --title-collapse:none;
   position:sticky;
   top:0;
   z-index:5;
@@ -491,7 +493,7 @@ footer {
   outline-offset:-3px
 }
 .pair-row,.table-pager,[data-scroll-label],.document-cell a,#comparison {
-  scroll-margin-top:calc(var(--chrome-height,140px) + 12px)
+  scroll-margin-top:calc(var(--chrome-obscured,0px) + 12px)
 }
 .pair-row {
   display:grid;
@@ -1113,6 +1115,7 @@ footer {
 /* Touch phones: the controls stay pinned and the filename row slides away under them while reading. */
 @media(pointer:coarse) and (max-width:700px) {
   #comparison-chrome {
+    --title-collapse:scroll;
     display:block;
     padding:0;
     border-bottom:0;
@@ -1152,9 +1155,6 @@ footer {
   }
   .comparison-title>* {
     opacity:calc(1 - var(--title-progress,0) * 1.5)
-  }
-  #comparison-chrome[data-settling] :is(.comparison-title,.comparison-title>*,.toolbar-controls:after) {
-    transition:transform 220ms cubic-bezier(.23,1,.32,1),opacity 220ms cubic-bezier(.23,1,.32,1)
   }
   .file-name>summary,.file-name:not(.loaded)>summary {
     display:flex;
@@ -1272,8 +1272,15 @@ footer {
     transition:none
   }
 }
+@media(prefers-reduced-motion:no-preference) {
+  #comparison-chrome[data-settling] :is(.comparison-title,.comparison-title>*,.toolbar-controls:after) {
+    transition:transform 220ms cubic-bezier(.23,1,.32,1),opacity 220ms cubic-bezier(.23,1,.32,1)
+  }
+}
+/* Short screens such as a phone in landscape can't spare the height to pin the chrome. */
 @media(max-height:450px) {
   #comparison-chrome {
+    --title-collapse:none;
     position:static
   }
 }

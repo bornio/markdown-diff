@@ -21,6 +21,13 @@ async function holdReads(page) {
   });
   await page.goto('./');
 }
+// How far the filename row has slid up under the pinned controls, measured from where both actually paint.
+const titleHidden = (page) => page.evaluate(() => {
+  const controls = globalThis.document.querySelector('.toolbar-controls').getBoundingClientRect();
+  const title = globalThis.document.querySelector('.comparison-title').getBoundingClientRect();
+  return Math.round(controls.bottom - title.top);
+});
+const scrollTo = (page, y) => page.evaluate((top) => globalThis.scrollTo(0, top), y);
 // Drops files on a side's filename, as when dragging them in from the desktop.
 const drop = (page, side, files) => page.evaluate(({ side, files }) => {
   const dataTransfer = new globalThis.DataTransfer();
@@ -345,27 +352,86 @@ test.describe('on a touch phone', () => {
   test('the filename row hides while scrolling down and returns on scroll up', async ({ page }) => {
     await page.goto('./example/');
     await expect(page.locator('#status')).toHaveText('Comparison ready');
-    const hidden = () => page.evaluate(() => parseFloat(globalThis.document.querySelector('#comparison-chrome').style.getPropertyValue('--title-hidden')) || 0);
-    const scrollTo = (y) => page.evaluate((top) => globalThis.scrollTo(0, top), y);
+    const hidden = () => titleHidden(page);
     // Reads the row's offset right after the scroll event, before it settles.
-    const scrollAndRead = (y) => page.evaluate(async (top) => {
-      const scrolled = new Promise((resolve) => globalThis.addEventListener('scroll', resolve, { once: true }));
-      globalThis.scrollTo(0, top);
-      await scrolled;
-      return parseFloat(globalThis.document.querySelector('#comparison-chrome').style.getPropertyValue('--title-hidden'));
-    }, y);
+    const scrollAndRead = async (y) => {
+      await page.evaluate(async (top) => {
+        const scrolled = new Promise((resolve) => globalThis.addEventListener('scroll', resolve, { once: true }));
+        globalThis.scrollTo(0, top);
+        await scrolled;
+      }, y);
+      return hidden();
+    };
     const range = await page.locator('.comparison-title').evaluate((node) => node.offsetHeight);
     expect(await scrollAndRead(20)).toBe(20);
-    for (let y = 80; y <= 600; y += 40) await scrollTo(y);
+    for (let y = 80; y <= 600; y += 40) await scrollTo(page, y);
     await expect.poll(hidden).toBe(range);
     await expect(page.locator('#rendered-view')).toBeInViewport();
     expect(await scrollAndRead(585)).toBe(range - 15);
     await expect.poll(hidden).toBe(range);
-    for (let y = 540; y >= 300; y -= 60) await scrollTo(y);
+    for (let y = 540; y >= 300; y -= 60) await scrollTo(page, y);
     await expect.poll(hidden).toBe(0);
-    for (let y = 360; y <= 900; y += 60) await scrollTo(y);
+    for (let y = 360; y <= 900; y += 60) await scrollTo(page, y);
     await expect.poll(hidden).toBe(range);
     await page.locator('#source-view').tap();
     await expect.poll(hidden).toBe(0);
+  });
+
+  test('a page turn lands just below the controls once the filename row has hidden', async ({ page }) => {
+    const intro = Array.from({ length: 40 }, (_, i) => `Paragraph ${i}.`).join('\n\n');
+    const code = fence(Array.from({ length: 240 }, (_, i) => `line ${i} old value`));
+    await drop(page, 'before', [file('left.md', `${intro}\n\n${code}`), file('right.md', `${intro}\n\n${code.replace('line 150 old', 'line 150 new')}`)]);
+    await expect(page.locator('#status')).toHaveText('Comparison ready');
+    const range = await page.locator('.comparison-title').evaluate((node) => node.offsetHeight);
+    await expect.poll(() => page.evaluate(() => globalThis.document.documentElement.scrollHeight - globalThis.innerHeight)).toBeGreaterThan(range * 4);
+    const pager = page.locator('.pair-row:has(pre) .table-pager');
+    const target = await pager.evaluate((node) => globalThis.scrollY + node.getBoundingClientRect().top - globalThis.innerHeight / 2);
+    for (let y = 100; y < target; y += 100) await scrollTo(page, y);
+    await scrollTo(page, target);
+    await expect.poll(() => titleHidden(page)).toBe(range);
+    await pager.getByRole('button', { name: 'Next', exact: true }).tap();
+    await expect(pager.getByRole('status')).toHaveText('Part 2 of 3');
+    const gap = () => page.evaluate(() => {
+      const controls = globalThis.document.querySelector('.toolbar-controls').getBoundingClientRect();
+      const pagerTop = globalThis.document.querySelector('.pair-row:has(pre) .table-pager').getBoundingClientRect().top;
+      return pagerTop - controls.bottom;
+    });
+    await expect.poll(async () => Math.abs(await gap() - 8)).toBeLessThan(1.5);
+    expect(await titleHidden(page)).toBe(range);
+  });
+
+  test('tabbing into the hidden filename row brings it back', async ({ page }) => {
+    await page.goto('./example/');
+    await expect(page.locator('#status')).toHaveText('Comparison ready');
+    for (let y = 80; y <= 600; y += 40) await scrollTo(page, y);
+    const range = await page.locator('.comparison-title').evaluate((node) => node.offsetHeight);
+    await expect.poll(() => titleHidden(page)).toBe(range);
+    await page.locator('#theme-toggle').focus();
+    await page.keyboard.press('Tab');
+    const summary = page.locator('#before-name summary');
+    await expect(summary).toBeFocused();
+    await expect.poll(() => titleHidden(page)).toBe(0);
+    const covered = await summary.evaluate((node) => {
+      const box = node.getBoundingClientRect();
+      return !node.contains(globalThis.document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
+    });
+    expect(covered).toBe(false);
+  });
+});
+
+test.describe('on a touch phone in landscape', () => {
+  test.use({ viewport: { width: 667, height: 375 }, hasTouch: true, isMobile: true });
+
+  test('the filename row scrolls away with the page and still opens the file sheet', async ({ page }) => {
+    await page.goto('./example/');
+    await expect(page.locator('#status')).toHaveText('Comparison ready');
+    for (let y = 40; y <= 600; y += 40) {
+      await scrollTo(page, y);
+      expect(await titleHidden(page)).toBe(0);
+    }
+    await expect.poll(() => titleHidden(page)).toBe(0);
+    await scrollTo(page, 0);
+    await page.locator('#after-name summary').tap();
+    await expect(page.getByRole('dialog', { name: 'Changed' })).toBeVisible();
   });
 });
