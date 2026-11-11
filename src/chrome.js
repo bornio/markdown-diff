@@ -6,7 +6,7 @@
  * @typedef {{
  *   mode: Mode,
  *   docs: { before: Doc | null, after: Doc | null },
- *   status: string,
+ *   status: keyof typeof STATUS_TEXT,
  *   stats: { added: number, removed: number, changed: number } | null,
  *   loaded: boolean,
  *   busy: boolean,
@@ -18,22 +18,44 @@
  *   mode(mode: Mode): void,
  *   clear(): void,
  *   swap(): void,
+ *   readFiles(files: FileList, side: Side): void,
+ *   paste(side: Side): void,
+ *   save(side: Side): void,
+ *   currentDoc(side: Side): Doc | null,
  * }} ChromeActions
  */
+
+const STATUS_TEXT = {
+  empty: 'Ready when you are',
+  reading: 'Reading files…',
+  working: 'Comparing files…',
+  identical: 'Files are identical',
+  'rendered-same': 'Same rendered content',
+  different: 'Comparison ready',
+  'open-error': 'Could not open file',
+  'compare-error': 'Comparison stopped',
+  editing: 'Choose Rendered or Source to compare',
+};
+const SIDE_LABEL = { before: 'Original', after: 'Changed' };
 
 /**
  * The comparison chrome: the header with its view switch, filenames and status, and the touch file sheet.
  * Layout facts come from CSS custom properties on the header, never from matchMedia.
  *
  * @param {HTMLElement} header  #comparison-chrome
- * @param {HTMLElement} sheet  #file-sheet
+ * @param {HTMLDialogElement} sheet  #file-sheet
  * @param {ChromeActions} actions
  * @returns {{ render(model: ChromeModel): void, scrollTo(target: number | Element): void }}
  */
 export function createComparisonChrome(header, sheet, actions) {
   /** @type {Mode | null} */
   let shownMode = null;
-  const collapse = createCollapse(header, () => sheet.hasAttribute('data-open'));
+  /** @type {ChromeModel | null} */
+  let last = null;
+  const collapse = createCollapse(header, () => sheet.open);
+  const fileSheet = createFileSheet(sheet, header, actions);
+  const filenames = createFilenames(header, (side) => fileSheet.open(side, last));
+  const renderStatus = createStatus(header);
   const modes = {
     rendered: header.querySelector('#rendered-view'),
     source: header.querySelector('#source-view'),
@@ -46,16 +68,23 @@ export function createComparisonChrome(header, sheet, actions) {
   clear.addEventListener('click', () => actions.clear());
   swap.addEventListener('click', () => actions.swap());
   header.querySelector('.comparison-title').addEventListener('focusin', () => collapse.reveal());
-  new ResizeObserver(() => collapse.sync()).observe(header);
-  addEventListener('resize', () => collapse.sync());
+  const resync = () => {
+    collapse.sync();
+    filenames.schedule();
+  };
+  new ResizeObserver(resync).observe(header);
+  addEventListener('resize', resync);
 
   /** @param {ChromeModel} model */
   function render(model) {
+    last = model;
     for (const [mode, button] of Object.entries(modes)) button.setAttribute('aria-pressed', String(model.mode === mode));
     modes.edit.disabled = model.busy && model.mode !== 'edit';
     clear.hidden = !model.loaded && model.status === 'empty';
     clear.disabled = !model.loaded && !['reading', 'open-error', 'compare-error'].includes(model.status);
     swap.disabled = !model.loaded;
+    renderStatus(model);
+    filenames.render(model.docs);
     // Native apps bring their bars back when you change screens, so a mode change shows the filename row.
     if (model.mode !== shownMode) {
       shownMode = model.mode;
@@ -150,5 +179,163 @@ function createCollapse(header, paused) {
       setHidden(hidden);
       rest();
     },
+  };
+}
+
+function createFilenames(header, openSheet) {
+  const segmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+  const labels = {
+    before: { element: header.querySelector('#before-name'), shown: null, loaded: false },
+    after: { element: header.querySelector('#after-name'), shown: null, loaded: false },
+  };
+  let frame = 0;
+
+  /** @returns {'sheet' | 'expand' | 'none'} */
+  function affordance({ element, loaded }) {
+    if (readLayout(header).fileMenu) return 'sheet';
+    const truncated = [...element.querySelectorAll('.file-name-value > span')].some((part) => part.scrollWidth > part.clientWidth);
+    return loaded && (element.open || truncated) ? 'expand' : 'none';
+  }
+  function schedule() {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      for (const label of Object.values(labels)) {
+        const kind = affordance(label);
+        const summary = label.element.querySelector('summary');
+        label.element.classList.toggle('expandable', kind === 'expand');
+        summary.tabIndex = kind === 'none' ? -1 : 0;
+        summary.setAttribute('aria-disabled', String(kind === 'none'));
+        if (kind === 'sheet') summary.setAttribute('aria-haspopup', 'dialog');
+        else summary.removeAttribute('aria-haspopup');
+      }
+    });
+  }
+
+  const resized = new ResizeObserver(schedule);
+  for (const [side, label] of Object.entries(labels)) {
+    resized.observe(label.element);
+    label.element.addEventListener('toggle', schedule);
+    label.element.querySelector('summary').addEventListener('click', (event) => {
+      const kind = affordance(label);
+      if (kind === 'expand') return;
+      event.preventDefault();
+      if (kind === 'sheet') openSheet(side);
+    });
+  }
+
+  /** @param {ChromeModel['docs']} docs */
+  function render(docs) {
+    for (const [side, label] of Object.entries(labels)) {
+      const doc = docs[side];
+      const name = doc?.name || SIDE_LABEL[side];
+      const shown = doc?.edited ? `${name} (edited)` : name;
+      if (label.shown !== shown) {
+        const segments = segmenter ? [...segmenter.segment(shown)].map(({ segment }) => segment) : [];
+        const start = document.createElement('span');
+        start.className = 'file-name-start';
+        start.textContent = segmenter ? segments.slice(0, -20).join('') : shown;
+        const end = document.createElement('span');
+        end.className = 'file-name-end';
+        end.textContent = segments.slice(-20).join('');
+        const value = document.createElement('bdi');
+        value.className = 'file-name-value';
+        value.append(start, end);
+        label.element.querySelector('summary').replaceChildren(value);
+        label.element.title = name;
+        label.shown = shown;
+        label.element.open = false;
+      }
+      label.loaded = !!doc;
+      label.element.classList.toggle('loaded', label.loaded);
+    }
+    schedule();
+  }
+
+  return { render, schedule };
+}
+
+function createFileSheet(sheet, header, actions) {
+  const input = sheet.querySelector('#file-input');
+  const label = sheet.querySelector('#file-sheet-label');
+  const name = sheet.querySelector('#file-sheet-name');
+  const save = sheet.querySelector('[data-sheet-action=save]');
+  const swap = sheet.querySelector('[data-sheet-action=swap]');
+  /** @type {Side} */
+  let side = 'after';
+  /** @type {Side} */
+  let pickSide = 'after';
+  const run = {
+    open: (target) => {
+      pickSide = target;
+      input.click();
+    },
+    paste: (target) => actions.paste(target),
+    save: (target) => actions.save(target),
+    swap: () => actions.swap(),
+  };
+
+  // Each action runs inside the tap's click handler: the file picker, clipboard and share sheet need its activation.
+  sheet.addEventListener('click', (event) => {
+    if (event.target === sheet) {
+      sheet.close();
+      return;
+    }
+    const action = event.target.closest('[data-sheet-action]')?.dataset.sheetAction;
+    if (!action) return;
+    sheet.close();
+    run[action](side);
+  });
+  input.addEventListener('change', () => {
+    actions.readFiles(input.files, pickSide);
+    input.value = '';
+  });
+  // A tapped filename may never have taken focus, so the dialog alone can't be trusted to return it there.
+  sheet.addEventListener('close', () => header.querySelector(`#${side}-name summary`).focus({ preventScroll: true }));
+
+  return {
+    /**
+     * @param {Side} target
+     * @param {ChromeModel | null} model
+     */
+    open(target, model) {
+      if (!model || sheet.open) return;
+      side = target;
+      const doc = actions.currentDoc(target);
+      label.textContent = SIDE_LABEL[target];
+      name.textContent = doc?.name || 'No file yet';
+      save.hidden = !doc;
+      swap.hidden = !model.loaded;
+      sheet.showModal();
+    },
+  };
+}
+
+const lineCount = (count) => count === 1 ? 'line' : 'lines';
+
+function createStatus(header) {
+  const status = header.querySelector('#status');
+  const stats = header.querySelector('#stats');
+  const summary = header.querySelector('.comparison-summary');
+  let statsMarkup = '';
+
+  /** @param {ChromeModel} model */
+  return (model) => {
+    const text = STATUS_TEXT[model.status];
+    if (status.textContent !== text) status.textContent = text;
+    status.classList.toggle('sr-only', model.status === 'empty' || model.status === 'different' ||
+      (model.status === 'rendered-same' && model.mode === 'source'));
+    summary.classList.toggle('busy', model.busy);
+    const { added = 0, removed = 0, changed = 0 } = model.stats ?? {};
+    const markup = [
+      added ? `<span class="stat-add" aria-label="${added} added ${lineCount(added)}">${added} added</span>` : '',
+      removed ? `<span class="stat-remove" aria-label="${removed} removed ${lineCount(removed)}">${removed} removed</span>` : '',
+      changed ? `${changed} changed ${lineCount(changed)}` : '',
+    ].filter(Boolean).join(' <span aria-hidden="true">·</span> ');
+    if (markup !== statsMarkup) {
+      stats.innerHTML = markup;
+      statsMarkup = markup;
+    }
+    stats.hidden = model.busy || model.mode === 'edit' || !markup;
   };
 }

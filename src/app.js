@@ -5,64 +5,22 @@ import { createComparisonChrome } from './chrome.js';
 import { createComparisonView } from './view.js';
 
 const $ = (selector) => document.querySelector(selector);
-const statusText = {
-  empty: 'Ready when you are',
-  reading: 'Reading files…',
-  working: 'Comparing files…',
-  identical: 'Files are identical',
-  'rendered-same': 'Same rendered content',
-  different: 'Comparison ready',
-  'open-error': 'Could not open file',
-  'compare-error': 'Comparison stopped',
-  editing: 'Choose Rendered or Source to compare',
-};
-const filenameSegments = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
 const state = {
   pair: { before: null, after: null }, view: 'rendered', requestId: 0,
   selectionId: 0, readIds: { before: 0, after: 0 }, worker: null,
   timeout: null, result: null, status: 'empty', selectionNotice: '', editing: false,
 };
+const SIDES = ['before', 'after'];
 const comparison = $('#comparison');
-const status = $('#status');
 const notice = $('#notice');
 const editor = $('#editor');
 const drafts = { before: $('#editor [data-side=before]'), after: $('#editor [data-side=after]') };
-const chrome = createComparisonChrome($('#comparison-chrome'), $('#file-sheet'), { mode: setMode, clear, swap });
+const chrome = createComparisonChrome($('#comparison-chrome'), $('#file-sheet'), {
+  mode: setMode, clear, swap, readFiles, currentDoc,
+  paste: pasteFromClipboard,
+  save: (side) => saveCopy(currentDoc(side)),
+});
 const display = createComparisonView(comparison, chrome);
-const filenames = ['before', 'after'].map((side) => ({ side, element: $(`#${side}-name`), renderedName: null }));
-// On touch phones the filenames open a sheet of file actions, and the filename row hides while reading.
-const phone = matchMedia('(pointer: coarse) and (max-width: 700px)');
-const sheet = $('#file-sheet');
-let filenameFrame = 0;
-
-function filenameTruncated(name) {
-  return [...name.querySelectorAll('.file-name-value > span')].some((part) => part.scrollWidth > part.clientWidth);
-}
-function scheduleFilenames() {
-  if (filenameFrame) return;
-  filenameFrame = requestAnimationFrame(() => {
-    filenameFrame = 0;
-    for (const { side, element: name } of filenames) {
-      const expandable = !!state.pair[side] && (name.open || filenameTruncated(name));
-      const tappable = phone.matches || expandable;
-      name.classList.toggle('expandable', expandable);
-      const summary = name.querySelector('summary');
-      summary.tabIndex = tappable ? 0 : -1;
-      summary.setAttribute('aria-disabled', String(!tappable));
-      if (phone.matches) summary.setAttribute('aria-haspopup', 'dialog');
-      else summary.removeAttribute('aria-haspopup');
-    }
-  });
-}
-const filenameResize = new ResizeObserver(scheduleFilenames);
-for (const { side, element: name } of filenames) {
-  filenameResize.observe(name);
-  name.addEventListener('toggle', scheduleFilenames);
-  name.querySelector('summary').addEventListener('click', (event) => {
-    if (phone.matches) { event.preventDefault(); openSheet(side); return; }
-    if (!state.pair[side] || (!name.open && !filenameTruncated(name))) event.preventDefault();
-  });
-}
 
 function cancelWorker() {
   state.worker?.terminate();
@@ -78,29 +36,6 @@ function message(text, error = false) {
   notice.classList.toggle('error', error);
 }
 function render() {
-  for (const label of filenames) {
-    const { side, element: name } = label;
-    const summary = name.querySelector('summary');
-    const filename = state.pair[side]?.name || (side === 'before' ? 'Original' : 'Changed');
-    const shown = state.pair[side]?.edited ? `${filename} (edited)` : filename;
-    if (label.renderedName !== shown) {
-      const segments = filenameSegments ? [...filenameSegments.segment(shown)].map(({ segment }) => segment) : [];
-      const start = document.createElement('span');
-      start.className = 'file-name-start';
-      start.textContent = filenameSegments ? segments.slice(0, -20).join('') : shown;
-      const end = document.createElement('span');
-      end.className = 'file-name-end';
-      end.textContent = segments.slice(-20).join('');
-      const value = document.createElement('bdi');
-      value.className = 'file-name-value';
-      value.append(start, end);
-      summary.replaceChildren(value);
-      name.title = filename;
-      label.renderedName = shown;
-      name.open = false;
-    }
-    name.classList.toggle('loaded', !!state.pair[side]);
-  }
   const loaded = !!(state.pair.before || state.pair.after);
   const busy = state.status === 'reading' || state.status === 'working';
   chrome.render({
@@ -116,13 +51,6 @@ function render() {
   if (state.view === 'source' && loaded) comparison.title = 'Click to edit';
   else comparison.removeAttribute('title');
   comparison.setAttribute('aria-busy', String(busy));
-  $('.comparison-summary').classList.toggle('busy', busy);
-  const statusLabel = statusText[state.status];
-  if (status.textContent !== statusLabel) status.textContent = statusLabel;
-  status.classList.toggle('sr-only', state.status === 'empty' || state.status === 'different' ||
-    (state.status === 'rendered-same' && state.view === 'source'));
-  $('#stats').hidden = busy || state.editing || !state.result || !$('#stats').textContent;
-  scheduleFilenames();
 }
 function startComparison() {
   state.editing = false;
@@ -131,7 +59,6 @@ function startComparison() {
   state.result = null;
   state.status = 'working';
   display.reset();
-  $('#stats').textContent = '';
   render();
   const requestId = state.requestId;
   const worker = new Worker(new URL('./compare.worker.js', import.meta.url), { type: 'module' });
@@ -153,12 +80,9 @@ function startComparison() {
     state.result = data.comparison;
     const { added, removed, changed } = state.result.stats;
     state.status = !added && !removed && !changed ? 'identical' : state.result.rows.every((row) => row.kind === 'same') ? 'rendered-same' : 'different';
-    $('#stats').innerHTML = [added ? `<span class="stat-add" aria-label="${added} added ${added === 1 ? 'line' : 'lines'}">${added} added</span>` : '',
-      removed ? `<span class="stat-remove" aria-label="${removed} removed ${removed === 1 ? 'line' : 'lines'}">${removed} removed</span>` : '',
-      changed ? `${changed} changed ${changed === 1 ? 'line' : 'lines'}` : ''].filter(Boolean).join(' <span aria-hidden="true">·</span> ');
     message(state.result.precision.warnings.length ? `Simplified comparison. ${state.result.precision.warnings.join(' ')}` : '');
     render();
-    display.reset(state.result, Object.fromEntries(filenames.map(({ side }) => [side, state.pair[side]?.name || 'Empty document'])));
+    display.reset(state.result, Object.fromEntries(SIDES.map((side) => [side, state.pair[side]?.name || 'Empty document'])));
     display.show(state.view);
   };
   worker.onerror = () => fail('Could not read this Markdown document.');
@@ -227,11 +151,13 @@ function startEditing(side, line) {
 const newName = (side) => side === 'before' ? 'Original.md' : 'Changed.md';
 // Textareas turn CRLF into LF, so an untouched side is compared in that form and keeps its original text.
 const draftChanged = (side) => drafts[side].value !== (state.pair[side]?.text ?? '').replace(/\r\n?/g, '\n');
+function currentDoc(side) {
+  return state.editing && draftChanged(side)
+    ? { name: state.pair[side]?.name || newName(side), text: drafts[side].value, edited: true }
+    : state.pair[side];
+}
 function syncDrafts() {
-  if (!state.editing) return;
-  for (const side of ['before', 'after']) {
-    if (draftChanged(side)) state.pair[side] = { name: state.pair[side]?.name || newName(side), text: drafts[side].value, edited: true };
-  }
+  for (const side of SIDES) state.pair[side] = currentDoc(side);
 }
 function lineAt(cell) {
   for (let row = cell?.closest('.pair-row'); row; row = row.previousElementSibling) {
@@ -278,7 +204,6 @@ function clear() {
   state.status = 'empty';
   display.reset();
   state.selectionNotice = '';
-  $('#stats').textContent = '';
   message('');
   openEditor('before');
 }
@@ -297,25 +222,14 @@ function setMode(mode) {
   render();
   display.show(mode);
 }
-function openSheet(side) {
-  syncDrafts();
-  sheet.dataset.side = side;
-  $('#file-sheet-label').textContent = side === 'before' ? 'Original' : 'Changed';
-  $('#file-sheet-name').textContent = state.pair[side]?.name || 'No file yet';
-  $('[data-sheet-action=save]').hidden = !state.pair[side];
-  $('[data-sheet-action=swap]').hidden = !(state.pair.before || state.pair.after);
-  sheet.inert = false;
-  sheet.setAttribute('data-open', '');
-  sheet.querySelector('button:not([hidden])').focus({ preventScroll: true });
+const pastedFile = (text) => new File([text], 'Pasted text.md');
+async function pasteFromClipboard(side) {
+  let text;
+  try { text = await navigator.clipboard.readText(); }
+  catch { message('This browser blocked clipboard access. Choose Edit, then touch and hold in a box to paste.', true); return; }
+  if (text) readFiles([pastedFile(text)], side);
 }
-function closeSheet() {
-  if (!sheet.hasAttribute('data-open')) return;
-  sheet.removeAttribute('data-open');
-  sheet.inert = true;
-  $(`#${sheet.dataset.side}-name summary`).focus({ preventScroll: true });
-}
-async function saveCopy(side) {
-  const { name, text } = state.pair[side];
+async function saveCopy({ name, text }) {
   const file = new File([text], name, { type: 'text/markdown' });
   if (navigator.canShare?.({ files: [file] })) {
     try { await navigator.share({ files: [file], title: name }); } catch {}
@@ -327,39 +241,6 @@ async function saveCopy(side) {
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href));
 }
-const sheetActions = {
-  open: (side) => { $('#file-input').dataset.side = side; $('#file-input').click(); },
-  paste: async (side) => {
-    let text;
-    try { text = await navigator.clipboard.readText(); }
-    catch { message('This browser blocked clipboard access. Choose Edit, then touch and hold in a box to paste.', true); return; }
-    if (text) readFiles([new File([text], 'Pasted text.md')], side);
-  },
-  save: (side) => saveCopy(side),
-  swap: () => swap(),
-};
-sheet.addEventListener('click', (event) => {
-  if (event.target.closest('[data-sheet-close]')) { closeSheet(); return; }
-  const action = event.target.closest('[data-sheet-action]')?.dataset.sheetAction;
-  if (!action) return;
-  const { side } = sheet.dataset;
-  closeSheet();
-  sheetActions[action](side);
-});
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') closeSheet();
-});
-$('#file-input').onchange = () => {
-  const input = $('#file-input');
-  readFiles(input.files, input.dataset.side);
-  input.value = '';
-};
-
-phone.addEventListener('change', () => {
-  closeSheet();
-  scheduleFilenames();
-});
-
 let dragDepth = 0;
 document.addEventListener('dragenter', (event) => {
   if (!event.dataTransfer.types.includes('Files')) return;
@@ -397,7 +278,7 @@ document.addEventListener('paste', (event) => {
   if (!files.length && !text) return;
   event.preventDefault();
   const side = document.activeElement?.closest('[data-side]')?.dataset.side || (state.pair.before ? 'after' : 'before');
-  readFiles(files.length ? files : [new File([text], 'Pasted text.md')], side);
+  readFiles(files.length ? files : [pastedFile(text)], side);
 });
 
 if (location.pathname.replace(/\/$/, '') === `${import.meta.env.BASE_URL}example`) {

@@ -327,7 +327,7 @@ main {
 .file-name.expandable>summary {
   cursor:pointer
 }
-.file-name:not(.loaded)>summary {
+.file-name:not(.loaded)>summary[aria-disabled=true] {
   pointer-events:none
 }
 .file-name.expandable>summary:active {
@@ -1088,8 +1088,37 @@ footer {
   }
 }
 @media(pointer:coarse) {
+  #comparison-chrome {
+    --file-menu:sheet
+  }
   .toolbar {
     padding-block:env(safe-area-inset-top,0px) 4px
+  }
+  .file-name>summary {
+    display:flex;
+    align-items:center;
+    min-height:36px;
+    padding:0 6px 0 10px;
+    border:1px solid var(--border);
+    border-radius:8px;
+    background:var(--surface);
+    cursor:pointer
+  }
+  .file-name>summary:after {
+    content:"";
+    flex-shrink:0;
+    width:6px;
+    height:6px;
+    margin:0 4px 3px 8px;
+    border-right:1.5px solid var(--muted);
+    border-bottom:1.5px solid var(--muted);
+    transform:rotate(45deg)
+  }
+  .file-name>summary:active {
+    background:var(--pressed)
+  }
+  .file-name-value {
+    min-width:0
   }
   .icon-button {
     min-width:44px
@@ -1156,60 +1185,30 @@ footer {
   .comparison-title>* {
     opacity:calc(1 - var(--title-progress,0) * 1.5)
   }
-  .file-name>summary,.file-name:not(.loaded)>summary {
-    display:flex;
-    align-items:center;
-    min-height:36px;
-    padding:0 6px 0 10px;
-    border:1px solid var(--border);
-    border-radius:8px;
-    background:var(--surface);
-    cursor:pointer;
-    pointer-events:auto
-  }
-  .file-name>summary:after {
-    content:"";
-    flex-shrink:0;
-    width:6px;
-    height:6px;
-    margin:0 4px 3px 8px;
-    border-right:1.5px solid var(--muted);
-    border-bottom:1.5px solid var(--muted);
-    transform:rotate(45deg)
-  }
-  .file-name>summary:active {
-    background:var(--pressed)
-  }
-  .file-name-value {
-    min-width:0
-  }
 }
 .file-sheet {
   position:fixed;
-  inset:0;
-  z-index:20;
-  visibility:hidden;
-  transition:visibility 0s linear 240ms
+  inset:auto 0 0;
+  width:100%;
+  max-width:none;
+  max-height:none;
+  margin:0;
+  padding:0;
+  border:0;
+  overflow:visible;
+  background:transparent;
+  color:inherit;
+  transition:display 240ms allow-discrete,overlay 240ms allow-discrete
 }
-.file-sheet[data-open] {
-  visibility:visible;
-  transition:none
-}
-.file-sheet-backdrop {
-  position:absolute;
-  inset:0;
+.file-sheet::backdrop {
   background:rgba(0,0,0,.32);
   opacity:0;
   transition:opacity 240ms ease-out
 }
-.file-sheet[data-open] .file-sheet-backdrop {
+.file-sheet[open]::backdrop {
   opacity:1
 }
 .file-sheet-panel {
-  position:absolute;
-  left:0;
-  right:0;
-  bottom:0;
   padding:8px 8px calc(12px + env(safe-area-inset-bottom,0px));
   border-radius:16px 16px 0 0;
   background:var(--page);
@@ -1217,8 +1216,27 @@ footer {
   transform:translateY(100%);
   transition:transform 240ms cubic-bezier(.32,.72,0,1)
 }
-.file-sheet[data-open] .file-sheet-panel {
+.file-sheet[open] .file-sheet-panel {
   transform:none
+}
+@starting-style {
+  .file-sheet[open]::backdrop {
+    opacity:0
+  }
+  .file-sheet[open] .file-sheet-panel {
+    transform:translateY(100%)
+  }
+}
+@media(min-width:701px) {
+  .file-sheet {
+    bottom:16px;
+    max-width:420px;
+    margin-inline:auto
+  }
+  .file-sheet-panel {
+    padding-bottom:12px;
+    border-radius:16px
+  }
 }
 .file-sheet-handle {
   width:36px;
@@ -1268,7 +1286,7 @@ footer {
   box-shadow:0 -1px 0 var(--border)
 }
 @media(prefers-reduced-motion:reduce) {
-  .file-sheet,.file-sheet-backdrop,.file-sheet-panel {
+  .file-sheet,.file-sheet::backdrop,.file-sheet-panel {
     transition:none
   }
 }

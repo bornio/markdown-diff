@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 
 const file = (name, text) => ({ name, mimeType: 'text/plain', buffer: Buffer.isBuffer(text) ? text : Buffer.from(text) });
@@ -327,13 +328,13 @@ test.describe('on a touch phone', () => {
     await expect(page.locator('#status')).toHaveText('Comparison ready');
     const sheet = page.locator('#file-sheet');
     await page.locator('#after-name summary').tap();
-    await expect(sheet).toHaveAttribute('data-open', '');
+    await expect(sheet).toBeVisible();
     await expect(page.locator('#after-name')).not.toHaveAttribute('open');
     await expect(page.locator('#file-sheet-name')).toHaveText('right.md');
     const [chooser] = await Promise.all([page.waitForEvent('filechooser'), sheet.getByRole('button', { name: 'Open a file…' }).tap()]);
     await chooser.setFiles(file('phone.md', '# Title\n\nphone words\n'));
     await expect(page.locator('#after-name')).toHaveAttribute('title', 'phone.md');
-    await expect(sheet).not.toHaveAttribute('data-open');
+    await expect(sheet).toBeHidden();
     await page.evaluate(() => globalThis.navigator.clipboard.writeText('# Title\n\npasted words\n'));
     await page.locator('#before-name summary').tap();
     await sheet.getByRole('button', { name: 'Paste from clipboard' }).tap();
@@ -347,6 +348,53 @@ test.describe('on a touch phone', () => {
     await expect(page.locator('#before-name')).toHaveAttribute('title', 'phone.md');
     await page.locator('#edit-view').tap();
     await expect(page.locator('#editor [data-side=after]')).toHaveCSS('font-size', '16px');
+  });
+
+  test('the file sheet saves the draft being edited, and opening it marks nothing as edited', async ({ page }) => {
+    await page.addInitScript(() => Object.defineProperty(globalThis.navigator, 'canShare', { value: undefined }));
+    await page.goto('./');
+    await drop(page, 'before', [file('left.md', '# Title\n\nold words\n'), file('right.md', '# Title\n\nnew words\n')]);
+    await expect(page.locator('#status')).toHaveText('Comparison ready');
+    await page.locator('#edit-view').tap();
+    const draft = page.locator('#editor [data-side=after]');
+    await draft.fill('# Title\n\nnew words, typed\n');
+    const sheet = page.locator('#file-sheet');
+    await page.locator('#after-name summary').tap();
+    await expect(page.locator('#file-sheet-name')).toHaveText('right.md');
+    const [saved] = await Promise.all([page.waitForEvent('download'), sheet.getByRole('button', { name: 'Save or share a copy' }).tap()]);
+    expect(saved.suggestedFilename()).toBe('right.md');
+    expect(await readFile(await saved.path(), 'utf8')).toBe('# Title\n\nnew words, typed\n');
+    await page.locator('#after-name summary').tap();
+    await expect(sheet).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
+    await draft.fill('# Title\n\nnew words\n');
+    await page.locator('#rendered-view').tap();
+    await expect(page.locator('#status')).toHaveText('Comparison ready');
+    await expect(page.locator('#after-name')).toHaveText('right.md');
+    await expect(page.locator('#before-name')).toHaveText('left.md');
+  });
+
+  test('the file sheet keeps keyboard focus inside until Escape returns it to the filename', async ({ page }) => {
+    await drop(page, 'before', [file('left.md', 'old words'), file('right.md', 'new words')]);
+    await expect(page.locator('#status')).toHaveText('Comparison ready');
+    const sheet = page.locator('#file-sheet');
+    await page.locator('#after-name summary').tap();
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByRole('button', { name: 'Open a file…' })).toBeFocused();
+    const focused = () => page.evaluate(() => {
+      const active = globalThis.document.activeElement;
+      return active === globalThis.document.body ? 'browser' : active.closest('#file-sheet') ? active.textContent : 'page';
+    });
+    const visited = [];
+    for (let press = 0; press < 6; press++) {
+      await page.keyboard.press('Tab');
+      visited.push(await focused());
+    }
+    expect(visited).toEqual(['Paste from clipboard', 'Save or share a copy', 'Swap sides', 'browser', 'Open a file…', 'Paste from clipboard']);
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
+    await expect(page.locator('#after-name summary')).toBeFocused();
   });
 
   test('the filename row hides while scrolling down and returns on scroll up', async ({ page }) => {
@@ -433,5 +481,21 @@ test.describe('on a touch phone in landscape', () => {
     await scrollTo(page, 0);
     await page.locator('#after-name summary').tap();
     await expect(page.getByRole('dialog', { name: 'Changed' })).toBeVisible();
+  });
+});
+
+test.describe('on a touch tablet', () => {
+  test.use({ viewport: { width: 820, height: 1180 }, hasTouch: true, isMobile: true });
+
+  test('a filename opens the file sheet, which can open a file', async ({ page }) => {
+    await drop(page, 'before', [file('left.md', '# Title\n\nold words\n'), file('right.md', '# Title\n\nnew words\n')]);
+    await expect(page.locator('#status')).toHaveText('Comparison ready');
+    await page.locator('#after-name summary').tap();
+    const sheet = page.getByRole('dialog', { name: 'Changed' });
+    await expect(sheet).toBeVisible();
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), sheet.getByRole('button', { name: 'Open a file…' }).tap()]);
+    await chooser.setFiles(file('tablet.md', '# Title\n\ntablet words\n'));
+    await expect(page.locator('#after-name')).toHaveAttribute('title', 'tablet.md');
+    await expect(page.locator('.document-cell[data-side=after] ins')).toHaveText('tablet');
   });
 });
