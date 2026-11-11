@@ -8,13 +8,10 @@ export function createComparisonView(container, chrome) {
   let frame = 0;
   let resetSizes = false;
   const views = new Map();
-  // At <=600px the chrome is display:contents (measures 0, still reports sticky) and only its toolbar sticks.
-  const chromeParts = [chrome, ...chrome.children];
-  const obscuredHeight = () => Math.max(0, ...chromeParts.map((node) =>
-    getComputedStyle(node).position === 'sticky' ? node.getBoundingClientRect().height : 0));
+  const obscuredHeight = () => getComputedStyle(chrome).position === 'sticky' ? chrome.getBoundingClientRect().height : 0;
   const publishChromeHeight = () => document.documentElement.style.setProperty('--chrome-height', `${obscuredHeight()}px`);
   const chromeSize = new ResizeObserver(publishChromeHeight);
-  for (const node of chromeParts) chromeSize.observe(node);
+  chromeSize.observe(chrome);
   const nearRows = new Set();
   const activeRows = new Set();
   const measuredHeights = new WeakMap();

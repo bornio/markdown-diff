@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#151618" />
     <script>
       (() => {
@@ -18,28 +18,29 @@
   </head>
   <body>
     <div class="app">
-      <div id="comparison-chrome">
-        <header class="toolbar">
-          <a class="brand" href="%BASE_URL%" aria-label="Markdown Diff home" title="Markdown Diff home"><span class="brand-mark" aria-hidden="true">M<span>↔</span></span><span class="brand-label">Markdown Diff</span></a>
-        <div class="tools">
-          <div class="view-switch" role="group" aria-label="Comparison view" hidden>
-            <button id="rendered-view" class="icon-button" type="button" aria-label="Rendered Markdown" title="Rendered Markdown" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><span class="view-label">Rendered</span></button>
-            <button id="source-view" class="icon-button" type="button" aria-label="Markdown source" title="Markdown source" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18"/></svg><span class="view-label">Source</span></button>
+      <header id="comparison-chrome" class="toolbar">
+        <div class="toolbar-controls">
+          <div class="toolbar-start">
+            <a class="brand" href="%BASE_URL%" aria-label="Markdown Diff home" title="Markdown Diff home"><span class="brand-mark" aria-hidden="true">M<span>↔</span></span></a>
+            <div class="view-switch" role="group" aria-label="Mode">
+              <button id="rendered-view" class="icon-button" type="button" aria-label="Rendered Markdown" title="Rendered Markdown" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><span class="view-label">Rendered</span></button>
+              <button id="source-view" class="icon-button" type="button" aria-label="Markdown source" title="Markdown source" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18"/></svg><span class="view-label">Source</span></button>
+              <button id="edit-view" class="icon-button" type="button" aria-label="Edit Markdown" title="Edit Markdown" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Zm9.5-13.5 4 4"/></svg><span class="view-label">Edit</span></button>
+            </div>
           </div>
-          <button id="swap" class="quiet icon-button" type="button" aria-label="Swap files" title="Swap files" disabled hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7h18m-4-4 4 4-4 4M21 17H3m4-4-4 4 4 4"/></svg></button>
-          <button id="clear" class="quiet icon-button" type="button" aria-label="Clear files" title="Clear files" disabled hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button>
-          <button id="theme-toggle" class="quiet icon-button" type="button" aria-label="Switch color theme" title="Switch color theme">
-            <svg class="theme-light" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>
-            <svg class="theme-dark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20.8 14.2A9 9 0 0 1 9.8 3.2a9 9 0 1 0 11 11Z"/></svg>
-          </button>
+          <div class="tools">
+            <button id="clear" class="quiet icon-button" type="button" aria-label="Clear files" title="Clear files" disabled hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button>
+            <button id="theme-toggle" class="quiet icon-button" type="button" aria-label="Switch color theme" title="Switch color theme">
+              <svg class="theme-light" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>
+              <svg class="theme-dark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20.8 14.2A9 9 0 0 1 9.8 3.2a9 9 0 1 0 11 11Z"/></svg>
+            </button>
+          </div>
         </div>
-        </header>
-        <div class="comparison-head">
-          <div class="file-bar" data-side="before"><details class="file-name" id="before-name"><summary tabindex="-1" aria-disabled="true">No file selected</summary></details><button class="file-browse quiet icon-button" data-side="before" type="button" aria-label="Choose original file" title="Choose original file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 15v6h16v-6"/></svg></button><button class="file-download quiet icon-button" data-side="before" type="button" aria-label="Download original" title="Download original" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 3v13m-5-5 5 5 5-5M4 15v6h16v-6"/></svg></button><input id="before-input" type="file" multiple accept=".md,.markdown,.txt,.mdx" hidden></div>
-          <div class="comparison-summary"><span id="status" role="status" aria-live="polite"></span><span id="stats"></span><button id="compare-edits" class="quiet" type="button" title="Compare edits (⌘/Ctrl+Enter)" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg>Compare</button></div>
-          <div class="file-bar" data-side="after"><details class="file-name" id="after-name"><summary tabindex="-1" aria-disabled="true">No file selected</summary></details><button class="file-browse quiet icon-button" data-side="after" type="button" aria-label="Choose changed file" title="Choose changed file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 15v6h16v-6"/></svg></button><button class="file-download quiet icon-button" data-side="after" type="button" aria-label="Download changed" title="Download changed" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 3v13m-5-5 5 5 5-5M4 15v6h16v-6"/></svg></button><input id="after-input" type="file" multiple accept=".md,.markdown,.txt,.mdx" hidden></div>
+        <div class="comparison-title">
+          <div class="file-pair"><details class="file-name" id="before-name" data-side="before"><summary tabindex="-1" aria-disabled="true">Original</summary></details><button id="swap" class="quiet icon-button" type="button" aria-label="Swap files" title="Swap files" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7h18m-4-4 4 4-4 4M21 17H3m4-4-4 4 4 4"/></svg></button><details class="file-name" id="after-name" data-side="after"><summary tabindex="-1" aria-disabled="true">Changed</summary></details></div>
+          <div class="comparison-summary"><span id="status" role="status" aria-live="polite"></span><span id="stats"></span></div>
         </div>
-      </div>
+      </header>
       <main id="main">
         <div id="notice" class="notice" hidden role="alert"></div>
         <section id="comparison" aria-label="Markdown comparison" tabindex="-1" hidden></section>
@@ -47,6 +48,18 @@
       </main>
       <footer><span title="Files are never uploaded. Remote Markdown images load directly from their URLs.">Files stay in your browser</span><a id="example" class="text-button" href="%BASE_URL%example/">Try an example <span aria-hidden="true">→</span></a></footer>
     </div>
+    <div id="file-sheet" class="file-sheet" inert>
+      <div class="file-sheet-backdrop" data-sheet-close></div>
+      <div class="file-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="file-sheet-label">
+        <div class="file-sheet-handle" aria-hidden="true"></div>
+        <div class="file-sheet-head"><span id="file-sheet-label"></span><span id="file-sheet-name"></span></div>
+        <button type="button" data-sheet-action="open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7.5V18a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9.5a2 2 0 0 0-2-2h-6.5L9.5 5H6a2 2 0 0 0-2 2.5Z"/></svg>Open a file…</button>
+        <button type="button" data-sheet-action="paste"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4.5V3h6v1.5M9.5 11h5m-5 4h5"/></svg>Paste from clipboard</button>
+        <button type="button" data-sheet-action="save"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Save or share a copy</button>
+        <button type="button" data-sheet-action="swap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7h18m-4-4 4 4-4 4M21 17H3m4-4-4 4 4 4"/></svg>Swap sides</button>
+      </div>
+    </div>
+    <input id="file-input" type="file" accept=".md,.markdown,.txt,.mdx" hidden>
     <div id="drop-overlay" hidden>Drop Markdown files to compare</div>
     <script type="module" src="/src/app.js"></script>
   </body>

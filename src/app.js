@@ -13,7 +13,7 @@ const statusText = {
   different: 'Comparison ready',
   'open-error': 'Could not open file',
   'compare-error': 'Comparison stopped',
-  editing: 'Edits not compared',
+  editing: 'Choose Rendered or Source to compare',
 };
 const filenameSegments = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
 const state = {
@@ -28,6 +28,11 @@ const editor = $('#editor');
 const drafts = { before: $('#editor [data-side=before]'), after: $('#editor [data-side=after]') };
 const display = createComparisonView(comparison, $('#comparison-chrome'));
 const filenames = ['before', 'after'].map((side) => ({ side, element: $(`#${side}-name`), renderedName: null }));
+// On touch phones the filenames open a sheet of file actions, and the filename row hides while reading.
+const phone = matchMedia('(pointer: coarse) and (max-width: 700px)');
+const sheet = $('#file-sheet');
+const chrome = $('#comparison-chrome');
+const title = $('.comparison-title');
 let filenameFrame = 0;
 
 function filenameTruncated(name) {
@@ -39,10 +44,13 @@ function scheduleFilenames() {
     filenameFrame = 0;
     for (const { side, element: name } of filenames) {
       const expandable = !!state.pair[side] && (name.open || filenameTruncated(name));
+      const tappable = phone.matches || expandable;
       name.classList.toggle('expandable', expandable);
       const summary = name.querySelector('summary');
-      summary.tabIndex = expandable ? 0 : -1;
-      summary.setAttribute('aria-disabled', String(!expandable));
+      summary.tabIndex = tappable ? 0 : -1;
+      summary.setAttribute('aria-disabled', String(!tappable));
+      if (phone.matches) summary.setAttribute('aria-haspopup', 'dialog');
+      else summary.removeAttribute('aria-haspopup');
     }
   });
 }
@@ -51,6 +59,7 @@ for (const { side, element: name } of filenames) {
   filenameResize.observe(name);
   name.addEventListener('toggle', scheduleFilenames);
   name.querySelector('summary').addEventListener('click', (event) => {
+    if (phone.matches) { event.preventDefault(); openSheet(side); return; }
     if (!state.pair[side] || (!name.open && !filenameTruncated(name))) event.preventDefault();
   });
 }
@@ -91,13 +100,10 @@ function updateChrome() {
       name.open = false;
     }
     name.classList.toggle('loaded', !!state.pair[side]);
-    $(`.file-download[data-side=${side}]`).hidden = !(state.pair[side]?.edited || (state.editing && state.pair[side]));
   }
   const loaded = !!(state.pair.before || state.pair.after);
   const busy = state.status === 'reading' || state.status === 'working';
   $('.app').classList.toggle('has-files', loaded);
-  $('.view-switch').hidden = !loaded;
-  $('#swap').hidden = !loaded;
   $('#clear').hidden = !loaded && state.status === 'empty';
   $('#swap').disabled = !loaded;
   $('#clear').disabled = !loaded && !['reading', 'open-error', 'compare-error'].includes(state.status);
@@ -113,13 +119,16 @@ function updateChrome() {
   $('.comparison-summary').classList.toggle('busy', busy);
   const statusLabel = statusText[state.status];
   if (status.textContent !== statusLabel) status.textContent = statusLabel;
-  status.classList.toggle('sr-only', state.status === 'empty' || state.status === 'different' || state.status === 'editing' ||
+  status.classList.toggle('sr-only', state.status === 'empty' || state.status === 'different' ||
     (state.status === 'rendered-same' && state.view === 'source'));
   $('#stats').hidden = busy || state.editing || !state.result || !$('#stats').textContent;
-  $('#compare-edits').hidden = !state.editing;
-  $('#compare-edits').disabled = busy;
-  $('#rendered-view').setAttribute('aria-pressed', String(state.view === 'rendered'));
-  $('#source-view').setAttribute('aria-pressed', String(state.view === 'source'));
+  $('#rendered-view').setAttribute('aria-pressed', String(!state.editing && state.view === 'rendered'));
+  $('#source-view').setAttribute('aria-pressed', String(!state.editing && state.view === 'source'));
+  $('#edit-view').setAttribute('aria-pressed', String(state.editing));
+  $('#edit-view').disabled = busy && !state.editing;
+  // Native apps bring their bars back when you change screens, so a mode change shows the filename row.
+  const mode = state.editing ? 'edit' : state.view;
+  if (mode !== shownMode) { shownMode = mode; showTitle(); }
   scheduleFilenames();
 }
 function startComparison() {
@@ -138,7 +147,7 @@ function startComparison() {
     if (requestId !== state.requestId) return;
     cancelWorker();
     state.status = 'compare-error';
-    message(`${text} Your text is open for editing. Fix it and press Compare, or choose another file.`, true);
+    message(`${text} Your text is open for editing. Fix it and choose Rendered or Source, or drop another file.`, true);
     openEditor('after');
   };
   worker.onmessage = ({ data }) => {
@@ -247,35 +256,21 @@ comparison.addEventListener('click', (event) => {
 comparison.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && event.target === comparison && canEdit()) startEditing('after');
 });
-editor.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); $('#compare-edits').click(); }
-});
-$('#compare-edits').onclick = () => {
+function compareEdits() {
   syncDrafts();
   if (!state.pair.before && !state.pair.after) return;
   startComparison();
   comparison.focus({ preventScroll: true });
-};
+}
+editor.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); compareEdits(); }
+});
 window.addEventListener('beforeunload', (event) => {
   if (state.pair.before?.edited || state.pair.after?.edited || (state.editing && (draftChanged('before') || draftChanged('after')))) {
     event.preventDefault();
     event.returnValue = true;
   }
 });
-for (const { side } of filenames) {
-  const input = $(`#${side}-input`);
-  input.onchange = () => { readFiles(input.files, side); input.value = ''; };
-  $(`.file-browse[data-side=${side}]`).onclick = () => input.click();
-  $(`.file-download[data-side=${side}]`).onclick = () => {
-    syncDrafts();
-    updateChrome();
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(new Blob([state.pair[side]?.text ?? ''], { type: 'text/markdown' }));
-    link.download = state.pair[side]?.name || newName(side);
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(link.href));
-  };
-}
 $('#swap').onclick = () => {
   syncDrafts();
   dropPendingReads();
@@ -298,13 +293,122 @@ for (const view of ['rendered', 'source']) $(`#${view}-view`).onclick = () => {
   if (state.view === view && !state.editing) return;
   state.view = view;
   if (state.editing) {
-    syncDrafts();
-    startComparison();
+    compareEdits();
+    updateChrome();
     return;
   }
   updateChrome();
   display.show(view);
 };
+$('#edit-view').onclick = () => {
+  if (!state.editing) startEditing('after');
+};
+function openSheet(side) {
+  syncDrafts();
+  sheet.dataset.side = side;
+  $('#file-sheet-label').textContent = side === 'before' ? 'Original' : 'Changed';
+  $('#file-sheet-name').textContent = state.pair[side]?.name || 'No file yet';
+  $('[data-sheet-action=save]').hidden = !state.pair[side];
+  $('[data-sheet-action=swap]').hidden = !(state.pair.before || state.pair.after);
+  sheet.inert = false;
+  sheet.setAttribute('data-open', '');
+  sheet.querySelector('button:not([hidden])').focus({ preventScroll: true });
+}
+function closeSheet() {
+  if (!sheet.hasAttribute('data-open')) return;
+  sheet.removeAttribute('data-open');
+  sheet.inert = true;
+  $(`#${sheet.dataset.side}-name summary`).focus({ preventScroll: true });
+}
+async function saveCopy(side) {
+  const { name, text } = state.pair[side];
+  const file = new File([text], name, { type: 'text/markdown' });
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); } catch {}
+    return;
+  }
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(file);
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href));
+}
+const sheetActions = {
+  open: (side) => { $('#file-input').dataset.side = side; $('#file-input').click(); },
+  paste: async (side) => {
+    let text;
+    try { text = await navigator.clipboard.readText(); }
+    catch { message('This browser blocked clipboard access. Choose Edit, then touch and hold in a box to paste.', true); return; }
+    if (text) readFiles([new File([text], 'Pasted text.md')], side);
+  },
+  save: (side) => saveCopy(side),
+  swap: () => $('#swap').click(),
+};
+sheet.addEventListener('click', (event) => {
+  if (event.target.closest('[data-sheet-close]')) { closeSheet(); return; }
+  const action = event.target.closest('[data-sheet-action]')?.dataset.sheetAction;
+  if (!action) return;
+  const { side } = sheet.dataset;
+  closeSheet();
+  sheetActions[action](side);
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeSheet();
+});
+$('#file-input').onchange = () => {
+  const input = $('#file-input');
+  readFiles(input.files, input.dataset.side);
+  input.value = '';
+};
+
+// While reading on a phone, the filename row slides up under the controls. It tracks the scroll 1:1 with no
+// easing, comes back as soon as the scroll reverses, and settles fully shown or hidden once scrolling stops.
+let titleHidden = 0;
+let shownMode = null;
+let lastScroll = 0;
+let ignoreScroll = false;
+let settleTimer = 0;
+let scrollEndTimer = 0;
+function publishTitle() {
+  const range = phone.matches ? title.offsetHeight : 0;
+  titleHidden = Math.min(titleHidden, range);
+  chrome.style.setProperty('--title-hidden', `${titleHidden}px`);
+  chrome.style.setProperty('--title-progress', range ? (titleHidden / range).toFixed(3) : '0');
+}
+function settleTitle(target) {
+  chrome.setAttribute('data-settling', '');
+  titleHidden = target;
+  publishTitle();
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(() => chrome.removeAttribute('data-settling'), 240);
+}
+function showTitle() {
+  // A view change restores its own scroll position; that jump is not the reader scrolling.
+  ignoreScroll = true;
+  requestAnimationFrame(() => requestAnimationFrame(() => { lastScroll = Math.max(scrollY, 0); ignoreScroll = false; }));
+  if (titleHidden) settleTitle(0);
+}
+addEventListener('scroll', () => {
+  const y = Math.max(scrollY, 0); // iOS reports negative values while rubber-banding at the top.
+  if (!phone.matches || ignoreScroll || sheet.hasAttribute('data-open')) { lastScroll = y; return; }
+  chrome.removeAttribute('data-settling');
+  // Never hide more than has scrolled, so the row can't cover the top of the document.
+  titleHidden = Math.min(Math.max(titleHidden + y - lastScroll, 0), title.offsetHeight, y);
+  lastScroll = y;
+  publishTitle();
+  clearTimeout(scrollEndTimer);
+  scrollEndTimer = setTimeout(() => {
+    const range = title.offsetHeight;
+    if (titleHidden > 0 && titleHidden < range) settleTitle(titleHidden >= range / 2 && scrollY >= range ? range : 0);
+  }, 140);
+}, { passive: true });
+phone.addEventListener('change', () => {
+  titleHidden = 0;
+  publishTitle();
+  closeSheet();
+  scheduleFilenames();
+});
+
 let dragDepth = 0;
 document.addEventListener('dragenter', (event) => {
   if (!event.dataTransfer.types.includes('Files')) return;
