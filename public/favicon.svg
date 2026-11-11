@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    :root { color: #111827; --mark-frame-width: 2 }
+    @media (prefers-color-scheme: dark) { :root { color: #edf0f5 } }
+  </style>
+  <symbol id="mark" viewBox="0 0 35 26" fill="none">
+    <rect x="1" y="1" width="33" height="24" rx="4" style="stroke: var(--mark-frame, currentColor); stroke-width: var(--mark-frame-width, 1)"/>
+    <path d="M9 18.5v-11l4.25 6 4.25-6v11" stroke="currentColor" stroke-width="2.4"/>
+    <path d="M20.5 13h7m-5-2-2 2 2 2m3-4 2 2-2 2" style="stroke: var(--mark-arrow, currentColor)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <use href="#mark" y="4.11" width="32" height="23.77"/>
+</svg>

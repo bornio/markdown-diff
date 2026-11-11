@@ -317,6 +317,17 @@ test('opening or closing an expandable section does the same on the other side',
   await expect(page.locator('.document-cell[data-side=before] details del').first()).toBeVisible();
 });
 
+test('the brand opens the GitHub repository in a new tab and is drawn from the favicon', async ({ page }) => {
+  const brand = page.getByRole('link', { name: 'Markdown Diff on GitHub (opens in a new tab)' });
+  await expect(brand).toHaveAttribute('href', 'https://github.com/bornio/markdown-diff');
+  await expect(brand).toHaveAttribute('target', '_blank');
+  const icon = await page.locator('link[rel=icon]').getAttribute('href');
+  const response = await page.request.get(new URL(icon, page.url()).href);
+  expect(response.ok()).toBe(true);
+  expect(response.headers()['content-type']).toContain('image/svg+xml');
+  await expect.poll(() => brand.locator('use').evaluate((use) => use.getBBox().width)).toBeGreaterThan(0);
+});
+
 test.describe('on a touch phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, permissions: ['clipboard-read', 'clipboard-write'] });
 

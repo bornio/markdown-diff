@@ -15,13 +15,14 @@
     </script>
     <meta name="description" content="Compare Markdown files side by side, with precise highlights in rendered tables, lists, and source. Files stay in your browser." />
     <title>Markdown Diff</title>
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
   </head>
   <body>
     <div class="app">
       <header id="comparison-chrome" class="toolbar">
         <div class="toolbar-controls">
           <div class="toolbar-start">
-            <a class="brand" href="%BASE_URL%" aria-label="Markdown Diff home" title="Markdown Diff home"><span class="brand-mark" aria-hidden="true">M<span>↔</span></span></a>
+            <a class="brand" href="https://github.com/bornio/markdown-diff" target="_blank" rel="noopener" aria-label="Markdown Diff on GitHub (opens in a new tab)" title="Markdown Diff on GitHub"><svg class="brand-mark" viewBox="0 0 35 26" aria-hidden="true"><use href="%BASE_URL%favicon.svg#mark" /></svg></a>
             <div class="view-switch" role="group" aria-label="Mode">
               <button id="rendered-view" class="icon-button" type="button" aria-label="Rendered Markdown" title="Rendered Markdown" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><span class="view-label">Rendered</span></button>
               <button id="source-view" class="icon-button" type="button" aria-label="Markdown source" title="Markdown source" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18"/></svg><span class="view-label">Source</span></button>
