@@ -1273,8 +1273,16 @@ footer {
   color:var(--muted)
 }
 .file-sheet-panel [data-sheet-action=swap] {
-  margin-top:6px;
-  box-shadow:0 -1px 0 var(--border)
+  position:relative;
+  margin-top:13px
+}
+.file-sheet-panel [data-sheet-action=swap]:before {
+  content:"";
+  position:absolute;
+  top:-7px;
+  left:12px;
+  right:12px;
+  border-top:1px solid var(--border)
 }
 @media(prefers-reduced-motion:reduce) {
   .file-sheet,.file-sheet::backdrop,.file-sheet-panel {
