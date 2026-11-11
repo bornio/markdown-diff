@@ -48,9 +48,7 @@ const SIDE_LABEL = { before: 'Original', after: 'Changed' };
  * @returns {{ render(model: ChromeModel): void, scrollTo(target: number | Element): void }}
  */
 export function createComparisonChrome(header, sheet, actions) {
-  /** @type {Mode | null} */
   let shownMode = null;
-  /** @type {ChromeModel | null} */
   let last = null;
   const collapse = createCollapse(header, () => sheet.open);
   const fileSheet = createFileSheet(sheet, header, actions);
@@ -85,7 +83,6 @@ export function createComparisonChrome(header, sheet, actions) {
     swap.disabled = !model.loaded;
     renderStatus(model);
     filenames.render(model.docs);
-    // Native apps bring their bars back when you change screens, so a mode change shows the filename row.
     if (model.mode !== shownMode) {
       shownMode = model.mode;
       collapse.reveal();
@@ -110,8 +107,6 @@ function readLayout(header) {
   };
 }
 
-// While reading on a phone, the filename row slides up under the controls. It tracks the scroll 1:1, comes back
-// as soon as the scroll reverses, and settles fully shown or hidden once scrolling stops.
 function createCollapse(header, paused) {
   const controls = header.querySelector('.toolbar-controls');
   const title = header.querySelector('.comparison-title');
@@ -126,13 +121,12 @@ function createCollapse(header, paused) {
     if (!collapse) return header.offsetHeight;
     return controls.offsetHeight + title.offsetHeight - hidden;
   }
-  // Never hides more than has scrolled, so the row can't cover the top of the document.
   function setHidden(px) {
     const range = title.offsetHeight;
-    hidden = readLayout(header).collapse ? Math.min(Math.max(px, 0), range, Math.max(scrollY, 0)) : 0;
+    const coverable = Math.min(range, Math.max(scrollY, 0));
+    hidden = readLayout(header).collapse ? Math.min(Math.max(px, 0), coverable) : 0;
     header.style.setProperty('--title-hidden', `${hidden}px`);
     header.style.setProperty('--title-progress', range ? (hidden / range).toFixed(3) : '0');
-    return hidden;
   }
   // A custom property rather than html scroll-padding-top: Chrome treats controls inside a sticky header as hidden
   // behind the scroll padding, so focusing one would scroll the page.
@@ -190,7 +184,6 @@ function createFilenames(header, openSheet) {
   };
   let frame = 0;
 
-  /** @returns {'sheet' | 'expand' | 'none'} */
   function affordance({ element, loaded }) {
     if (readLayout(header).fileMenu) return 'sheet';
     const truncated = [...element.querySelectorAll('.file-name-value > span')].some((part) => part.scrollWidth > part.clientWidth);
@@ -224,7 +217,6 @@ function createFilenames(header, openSheet) {
     });
   }
 
-  /** @param {ChromeModel['docs']} docs */
   function render(docs) {
     for (const [side, label] of Object.entries(labels)) {
       const doc = docs[side];
@@ -261,9 +253,7 @@ function createFileSheet(sheet, header, actions) {
   const name = sheet.querySelector('#file-sheet-name');
   const save = sheet.querySelector('[data-sheet-action=save]');
   const swap = sheet.querySelector('[data-sheet-action=swap]');
-  /** @type {Side} */
   let side = 'after';
-  /** @type {Side} */
   let pickSide = 'after';
   const run = {
     open: (target) => {
@@ -290,14 +280,10 @@ function createFileSheet(sheet, header, actions) {
     actions.readFiles(input.files, pickSide);
     input.value = '';
   });
-  // A tapped filename may never have taken focus, so the dialog alone can't be trusted to return it there.
+  // Safari doesn't focus a tapped button or summary, so the dialog may have no opener to return focus to.
   sheet.addEventListener('close', () => header.querySelector(`#${side}-name summary`).focus({ preventScroll: true }));
 
   return {
-    /**
-     * @param {Side} target
-     * @param {ChromeModel | null} model
-     */
     open(target, model) {
       if (!model || sheet.open) return;
       side = target;
@@ -319,7 +305,6 @@ function createStatus(header) {
   const summary = header.querySelector('.comparison-summary');
   let statsMarkup = '';
 
-  /** @param {ChromeModel} model */
   return (model) => {
     const text = STATUS_TEXT[model.status];
     if (status.textContent !== text) status.textContent = text;

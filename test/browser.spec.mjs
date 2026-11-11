@@ -22,7 +22,6 @@ async function holdReads(page) {
   });
   await page.goto('./');
 }
-// How far the filename row has slid up under the pinned controls, measured from where both actually paint.
 const titleHidden = (page) => page.evaluate(() => {
   const controls = globalThis.document.querySelector('.toolbar-controls').getBoundingClientRect();
   const title = globalThis.document.querySelector('.comparison-title').getBoundingClientRect();
