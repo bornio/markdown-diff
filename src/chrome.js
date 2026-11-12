@@ -1,6 +1,8 @@
+import { formatDate } from './versions.js';
+
 /** @typedef {'before' | 'after'} Side */
 /** @typedef {'rendered' | 'source' | 'edit'} Mode */
-/** @typedef {{ name: string, text: string, edited?: boolean }} Doc */
+/** @typedef {{ name: string, text: string, edited?: boolean, version?: { sha: string, date: string, absent: boolean } }} Doc */
 /**
  * Everything the header shows, built once per state change. Committed docs only.
  * @typedef {{
@@ -10,6 +12,7 @@
  *   stats: { added: number, removed: number, changed: number } | null,
  *   loaded: boolean,
  *   busy: boolean,
+ *   versions: boolean,
  * }} ChromeModel
  */
 /**
@@ -21,6 +24,7 @@
  *   readFiles(files: FileList, side: Side): void,
  *   paste(side: Side): void,
  *   save(side: Side): void,
+ *   versions(side: Side, anchor: HTMLElement, sheet: boolean): void,
  *   currentDoc(side: Side): Doc | null,
  * }} ChromeActions
  */
@@ -35,6 +39,11 @@ const STATUS_TEXT = {
   'open-error': 'Could not open file',
   'compare-error': 'Comparison stopped',
   editing: 'Choose Rendered or Source to compare',
+  'github-history': 'Loading history from GitHub…',
+  'github-scan': 'Finding the latest change…',
+  'github-content': 'Loading versions from GitHub…',
+  'github-error': 'Could not load from GitHub',
+  'same-version': 'Same version on both sides',
 };
 const SIDE_LABEL = { before: 'Original', after: 'Changed' };
 
@@ -52,7 +61,8 @@ export function createComparisonChrome(header, sheet, actions) {
   let last = null;
   const collapse = createCollapse(header, () => sheet.open);
   const fileSheet = createFileSheet(sheet, header, actions);
-  const filenames = createFilenames(header, (side) => fileSheet.open(side, last));
+  const filenames = createFilenames(header, (side) => fileSheet.open(side, last),
+    (side, anchor) => actions.versions(side, anchor, readLayout(header).fileMenu));
   const renderStatus = createStatus(header);
   const modes = {
     rendered: header.querySelector('#rendered-view'),
@@ -79,10 +89,10 @@ export function createComparisonChrome(header, sheet, actions) {
     for (const [mode, button] of Object.entries(modes)) button.setAttribute('aria-pressed', String(model.mode === mode));
     modes.edit.disabled = model.busy && model.mode !== 'edit';
     clear.hidden = !model.loaded && model.status === 'empty';
-    clear.disabled = !model.loaded && !['reading', 'open-error', 'compare-error'].includes(model.status);
+    clear.disabled = !model.loaded && !model.versions && !['reading', 'open-error', 'compare-error'].includes(model.status) && !model.status.startsWith('github-');
     swap.disabled = !model.loaded;
     renderStatus(model);
-    filenames.render(model.docs);
+    filenames.render(model.docs, model.versions);
     if (model.mode !== shownMode) {
       shownMode = model.mode;
       collapse.reveal();
@@ -176,15 +186,17 @@ function createCollapse(header, paused) {
   };
 }
 
-function createFilenames(header, openSheet) {
+function createFilenames(header, openSheet, openVersions) {
   const segmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
   const labels = {
     before: { element: header.querySelector('#before-name'), shown: null, loaded: false },
     after: { element: header.querySelector('#after-name'), shown: null, loaded: false },
   };
   let frame = 0;
+  let versions = false;
 
   function affordance({ element, loaded }) {
+    if (versions) return 'versions';
     if (readLayout(header).fileMenu) return 'sheet';
     const truncated = [...element.querySelectorAll('.file-name-value > span')].some((part) => part.scrollWidth > part.clientWidth);
     return loaded && (element.open || truncated) ? 'expand' : 'none';
@@ -197,10 +209,13 @@ function createFilenames(header, openSheet) {
         const kind = affordance(label);
         const summary = label.element.querySelector('summary');
         label.element.classList.toggle('expandable', kind === 'expand');
+        label.element.classList.toggle('versions', kind === 'versions');
         summary.tabIndex = kind === 'none' ? -1 : 0;
         summary.setAttribute('aria-disabled', String(kind === 'none'));
-        if (kind === 'sheet') summary.setAttribute('aria-haspopup', 'dialog');
+        if (kind === 'sheet' || kind === 'versions') summary.setAttribute('aria-haspopup', 'dialog');
         else summary.removeAttribute('aria-haspopup');
+        if (kind === 'versions') summary.title = 'Choose another version';
+        else summary.removeAttribute('title');
       }
     });
   }
@@ -214,15 +229,21 @@ function createFilenames(header, openSheet) {
       if (kind === 'expand') return;
       event.preventDefault();
       if (kind === 'sheet') openSheet(side);
+      if (kind === 'versions') openVersions(side, event.currentTarget);
     });
   }
 
-  function render(docs) {
+  function render(docs, remote) {
+    versions = remote;
+    // Two versions from the same day need their times to tell them apart.
+    const days = [docs.before, docs.after].map((doc) => doc?.version?.date && formatDate(doc.version.date, { time: false }));
+    const time = !!days[0] && days[0] === days[1] && docs.before.version.sha !== docs.after.version.sha;
     for (const [side, label] of Object.entries(labels)) {
       const doc = docs[side];
       const name = doc?.name || SIDE_LABEL[side];
       const shown = doc?.edited ? `${name} (edited)` : name;
-      if (label.shown !== shown) {
+      const date = doc?.version?.date ? `${doc.version.absent ? 'not in ' : ''}${formatDate(doc.version.date, { time })}` : '';
+      if (label.shown !== shown + date) {
         const segments = segmenter ? [...segmenter.segment(shown)].map(({ segment }) => segment) : [];
         const start = document.createElement('span');
         start.className = 'file-name-start';
@@ -233,9 +254,12 @@ function createFilenames(header, openSheet) {
         const value = document.createElement('bdi');
         value.className = 'file-name-value';
         value.append(start, end);
-        label.element.querySelector('summary').replaceChildren(value);
+        const when = document.createElement('span');
+        when.className = 'file-name-when';
+        when.textContent = date;
+        label.element.querySelector('summary').replaceChildren(...date ? [value, when] : [value]);
         label.element.title = name;
-        label.shown = shown;
+        label.shown = shown + date;
         label.element.open = false;
       }
       label.loaded = !!doc;

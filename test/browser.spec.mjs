@@ -35,6 +35,45 @@ const drop = (page, side, files) => page.evaluate(({ side, files }) => {
   globalThis.document.querySelector(`#${side}-name`).dispatchEvent(new globalThis.DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }));
 }, { side, files: [files].flat().map(({ name, buffer }) => ({ name, bytes: [...buffer] })) });
 
+const sha = (n) => n.toString(16).padStart(40, '0');
+const gistId = 'abcdef0123456789abcd';
+const REPO_LINK = 'https://github.com/o/r/blob/main/docs/plan.md';
+const GIST_LINK = `https://gist.github.com/ann/${gistId}`;
+const linkTo = (link, params = {}) => `./?${new URLSearchParams({ gh: link, ...params })}`;
+const query = (page) => Object.fromEntries(new URL(page.url()).searchParams);
+// A made-up repo file and gist, so the tests never reach GitHub. `fail` makes the history request
+// return 404, run out the hourly limit, or drop the connection; `paged` serves repo history two commits a page.
+async function mockGitHub(page, { fail = null, paged = false } = {}) {
+  const repo = [3, 2, 1].map((n) => ({ sha: sha(n), author: { login: 'ann' }, commit: { message: `Plan, take ${n}`, author: { name: 'Ann', date: `2026-0${n}-01T12:00:00Z` } } }));
+  const gist = {
+    'notes.md': { [sha(13)]: 'Notes two\n', [sha(12)]: 'Notes one\n', [sha(11)]: 'Notes one\n' },
+    'todo.md': { [sha(13)]: 'Todo\n', [sha(12)]: 'Todo\n' },
+  };
+  const revisions = [13, 12, 11].map((n) => ({ version: sha(n), committed_at: `2026-0${n - 10}-02T12:00:00Z`, user: { login: 'ann' }, change_status: { additions: 1, deletions: 1 } }));
+  const headers = { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'Link, X-RateLimit-Remaining, X-RateLimit-Reset' };
+  await page.route(/^https:\/\/(api\.github\.com|raw\.githubusercontent\.com|gist\.githubusercontent\.com)\//, (route) => {
+    const url = new URL(route.request().url());
+    const parts = url.pathname.split('/').slice(1);
+    if (url.hostname === 'api.github.com') {
+      if (fail === 'missing') return route.fulfill({ status: 404, headers, json: { message: 'Not Found' } });
+      if (fail === 'limit') return route.fulfill({ status: 403, headers: { ...headers, 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1800000000' }, json: {} });
+      if (fail === 'offline') return route.abort();
+      if (parts[0] === 'repos' && paged) {
+        const number = Number(url.searchParams.get('page'));
+        const next = number === 1 ? { link: `<${url.href.replace('page=1', 'page=2')}>; rel="next"` } : {};
+        return route.fulfill({ headers: { ...headers, ...next }, json: repo.slice((number - 1) * 2, number * 2) });
+      }
+      if (parts[0] === 'repos') return route.fulfill({ headers, json: repo });
+      if (parts.length === 2) return route.fulfill({ headers, json: { owner: { login: 'ann' }, files: { 'notes.md': {}, 'todo.md': {}, 'run.sh': {} } } });
+      return route.fulfill({ headers, json: revisions });
+    }
+    const text = url.hostname === 'raw.githubusercontent.com'
+      ? Object.fromEntries(repo.map(({ sha: version }, i) => [version, `# Plan\n\nTake ${3 - i}.\n`]))[parts[2]]
+      : gist[decodeURIComponent(parts[4])]?.[parts[3]];
+    return route.fulfill(text == null ? { status: 404, headers, body: '404: Not Found' } : { headers, body: text });
+  });
+}
+
 test.beforeEach(async ({ page }) => { await page.goto('./'); });
 
 test('file boundaries, status visibility, and actual Source survive success and read errors', async ({ page }) => {
@@ -327,8 +366,144 @@ test('the brand opens the GitHub repository in a new tab and is drawn from the f
   await expect.poll(() => brand.locator('use').evaluate((use) => use.getBBox().width)).toBeGreaterThan(0);
 });
 
+test('a GitHub link compares the latest two versions, and each filename picks another', async ({ page }) => {
+  await mockGitHub(page);
+  await page.goto(linkTo(REPO_LINK));
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  expect(query(page)).toMatchObject({ a: sha(2), b: sha(3) });
+  await expect(page.locator('#before-name')).toHaveText(/plan\.md\s*Feb 1/);
+  await expect(page.locator('.document-cell[data-side=after] ins')).toHaveText('3');
+  await page.locator('#before-name summary').click();
+  const menu = page.getByRole('dialog', { name: 'Original version' });
+  await expect(menu.getByRole('option')).toHaveText([/Plan, take 3\s*Latest\s*Changed/, /Plan, take 2\s*Original/, /Plan, take 1/]);
+  await expect(menu.getByRole('option', { selected: true })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(menu).toBeHidden();
+  await expect(page.locator('#before-name')).toHaveText(/Jan 1/);
+  expect(query(page)).toMatchObject({ a: sha(1), b: sha(3) });
+  await expect(page.locator('.document-cell[data-side=before] del')).toHaveText('1');
+  await page.goBack();
+  await expect(page.locator('#before-name')).toHaveText(/Feb 1/);
+  await expect(page.locator('.document-cell[data-side=before] del')).toHaveText('2');
+  await page.locator('#swap').click();
+  expect(query(page)).toMatchObject({ a: sha(3), b: sha(2) });
+  await page.locator('#after-name summary').click();
+  await page.getByRole('option', { name: /Plan, take 3/ }).click();
+  await expect(page.locator('#status')).toHaveText('Same version on both sides');
+  await page.locator('#clear').click();
+  expect(query(page)).toEqual({});
+  await expect(page.locator('#github-form')).toBeVisible();
+  await page.goBack();
+  await expect(page.locator('#status')).toHaveText('Same version on both sides');
+});
+
+test('a long history loads older versions into the open menu', async ({ page }) => {
+  await mockGitHub(page, { paged: true });
+  await page.goto(linkTo(REPO_LINK));
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  await page.locator('#before-name summary').click();
+  const menu = page.getByRole('dialog', { name: 'Original version' });
+  await expect(menu.getByRole('option')).toHaveCount(2);
+  await menu.getByRole('button', { name: 'Load older versions' }).click();
+  await expect(menu.getByRole('option')).toHaveCount(3);
+  await expect(menu.locator('.version-foot')).toHaveText('3 versions');
+  await expect(menu.getByRole('option').last()).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#before-name')).toHaveText(/Jan 1/);
+});
+
+test('a gist compares the last change to its file, can switch files, and dims versions that leave a file alone', async ({ page }) => {
+  await mockGitHub(page);
+  await page.goto(linkTo(GIST_LINK));
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  expect(query(page)).toMatchObject({ file: 'notes.md', a: sha(11), b: sha(13) });
+  await page.locator('#before-name summary').click();
+  const menu = page.getByRole('dialog', { name: 'Original version' });
+  const unchanged = menu.getByRole('listbox', { name: 'Versions' }).getByRole('option').nth(1);
+  await expect(unchanged).toHaveClass(/dim/);
+  await expect(unchanged).toContainText('No change to notes.md');
+  await expect(menu.getByRole('combobox', { name: 'File in this gist' }).locator('option')).toHaveText(['notes.md', 'todo.md']);
+  await menu.getByRole('combobox', { name: 'File in this gist' }).selectOption('todo.md');
+  await expect(page.locator('#notice')).toHaveText('todo.md has only one version, so everything shows as added.');
+  expect(query(page)).toMatchObject({ file: 'todo.md', b: sha(12) });
+  expect(query(page).a).toBeUndefined();
+  await page.locator('#after-name summary').click();
+  await page.getByRole('option', { name: /Jan 2/ }).click();
+  await expect(page.locator('#notice')).toContainText("todo.md isn't in the Jan 2, ");
+  await expect(page.locator('#after-name')).toHaveText(/not in Jan 2/);
+});
+
+test('GitHub links come from the form, a paste, or an empty editor box, and edits stay out of the page link', async ({ page }) => {
+  await mockGitHub(page);
+  await page.locator('#github-url').fill('github.com/o/r/tree/main');
+  await page.locator('#github-url').press('Enter');
+  await expect(page.locator('#github-url-error')).toBeVisible();
+  await expect(page.locator('#github-url')).toHaveAttribute('aria-invalid', 'true');
+  await page.locator('#github-url').fill('github.com/o/r/blob/main/docs/plan.md');
+  await page.getByRole('button', { name: 'Load versions' }).click();
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  const before = page.url();
+  await page.locator('#edit-view').click();
+  await page.locator('#editor [data-side=after]').fill('# Plan\n\nTake 4.\n');
+  await page.locator('#rendered-view').click();
+  await expect(page.locator('#after-name')).toHaveText(/plan\.md \(edited\)/);
+  await expect(page.locator('#notice')).toHaveText('The page link opens the GitHub versions, without your changes.');
+  expect(page.url()).toBe(before);
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('#after-name summary').click();
+  await page.getByRole('option', { name: /Plan, take 3/ }).click();
+  await expect(page.locator('#after-name')).not.toHaveText(/edited/);
+  await expect(page.locator('#notice')).toBeHidden();
+  await page.locator('#clear').click();
+  await page.evaluate((link) => {
+    const data = new globalThis.DataTransfer();
+    data.setData('text/plain', link);
+    globalThis.document.querySelector('#editor [data-side=after]').dispatchEvent(new globalThis.ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, GIST_LINK);
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  expect(query(page).file).toBe('notes.md');
+});
+
+test('GitHub failures explain themselves and offer a retry only when one can help', async ({ page }) => {
+  await mockGitHub(page, { fail: 'missing' });
+  await page.goto(linkTo(REPO_LINK));
+  await expect(page.locator('#status')).toHaveText('Could not load from GitHub');
+  await expect(page.locator('#notice')).toHaveText("GitHub couldn't find that. Private repos can't be loaded.");
+  await expect(page.locator('#github-url')).toHaveValue(REPO_LINK);
+  await expect(page.locator('#github-url')).toBeFocused();
+  await page.unrouteAll();
+  await mockGitHub(page, { fail: 'limit' });
+  await page.reload();
+  await expect(page.locator('#notice')).toContainText("GitHub's hourly limit for your network is used up. Try again after");
+  await expect(page.locator('#notice button')).toHaveCount(0);
+  await page.unrouteAll();
+  await mockGitHub(page, { fail: 'offline' });
+  await page.reload();
+  await expect(page.locator('#notice')).toContainText("Couldn't reach GitHub.");
+  await page.unrouteAll();
+  await mockGitHub(page);
+  await page.locator('#notice').getByRole('button', { name: 'Try again' }).click();
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  await expect(page.locator('#notice')).toBeHidden();
+});
+
 test.describe('on a touch phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, permissions: ['clipboard-read', 'clipboard-write'] });
+
+  test('a GitHub filename opens a sheet of versions', async ({ page }) => {
+    await mockGitHub(page);
+    await page.goto(linkTo(REPO_LINK));
+    await expect(page.locator('#status')).toHaveText('Comparison ready');
+    await page.locator('#before-name summary').tap();
+    const sheet = page.getByRole('dialog', { name: 'Original version' });
+    await expect(sheet).toBeVisible();
+    await expect(page.locator('#file-sheet')).toBeHidden();
+    await sheet.getByRole('option', { name: /Plan, take 1/ }).tap();
+    await expect(sheet).toBeHidden();
+    await expect(page.locator('#before-name')).toHaveText(/Jan 1/);
+    expect(query(page).a).toBe(sha(1));
+  });
 
   test('a filename opens its file sheet to open, paste, save, or swap', async ({ page }) => {
     // Use the download fallback; real phones get the share sheet.
