@@ -1,6 +1,6 @@
 # Markdown Diff
 
-Compare Markdown files side by side, with changes inside rendered tables, lists, headings, and text. Switch to Source to see the Markdown itself.
+Compare Markdown files side by side, with changes inside rendered tables, lists, headings, and text. Switch to Source to see the Markdown itself. Paste a GitHub file or gist link to compare its versions.
 
 [Open the app](https://bornio.github.io/markdown-diff/) · [Try the example](https://bornio.github.io/markdown-diff/example/)
 
@@ -25,6 +25,16 @@ Wide tables scroll within each pane. Some HTML tables use block highlighting or 
 Gutter lines mark changed sections: red on the left, green on the right. Word highlights show text edits and shading shows added or removed content. A dotted outline marks an element whose formatting or attributes changed; a replaced image gets a red or green outline and a changed checkbox a solid one. Use Source to inspect the exact syntax.
 
 Your files stay in the browser. Comparison runs in a Web Worker. There is no backend, account, upload, or API key. Images referenced in a document can load from their URLs.
+
+## Compare versions of a GitHub file
+
+Paste a link to a Markdown file in a public GitHub repository, or to a gist, into the box above the editor and choose Load versions. Pasting the link anywhere outside a text box, or into an empty editor box, works too. The page compares the two latest versions: for a repository file, its last two commits; for a gist, the last two revisions that changed that file. Secret gists work, since anyone with the link can read them. Private repositories don't.
+
+Each filename shows the date of its version. Click or tap it to choose another version for that side from the file's history, with commit messages for repositories. A gist with several Markdown files has a file menu at the top of the list, and versions that leave the chosen file unchanged are dimmed. History loads 100 versions at a time; Load older versions at the end of the list fetches more.
+
+The page link keeps the whole choice, for example `?gh=https://github.com/owner/repo/blob/main/README.md&a=<sha>&b=<sha>`, so it reopens the same two versions. Back and Forward step through the versions you picked. Edits stay out of the link, and a notice says so.
+
+The page reads history from the GitHub API, which allows 60 requests an hour from one network without signing in. Opening a repository file uses one request per 100 commits; a gist uses two. File text comes from GitHub's raw file hosts, which don't count toward that limit. Images with relative paths in a GitHub file don't load.
 
 ## Development
 

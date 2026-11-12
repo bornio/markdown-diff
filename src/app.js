@@ -3,23 +3,62 @@ import './theme.js';
 import { example } from './example.js';
 import { createComparisonChrome } from './chrome.js';
 import { createComparisonView } from './view.js';
+import { parseGitHubUrl } from './github.js';
+import { createVersions } from './versions.js';
+import { createVersionMenu } from './version-menu.js';
 
 const $ = (selector) => document.querySelector(selector);
 const state = {
   pair: { before: null, after: null }, view: 'rendered', requestId: 0,
   selectionId: 0, readIds: { before: 0, after: 0 }, worker: null,
-  timeout: null, result: null, status: 'empty', selectionNotice: '', editing: false,
+  timeout: null, result: null, status: 'empty', selectionNotice: '', versionNote: '', editing: false,
 };
+const GITHUB_BUSY = ['github-history', 'github-scan', 'github-content'];
 const SIDES = ['before', 'after'];
 const comparison = $('#comparison');
 const notice = $('#notice');
 const editor = $('#editor');
 const drafts = { before: $('#editor [data-side=before]'), after: $('#editor [data-side=after]') };
+const githubForm = $('#github-form');
+const githubUrl = $('#github-url');
 const chrome = createComparisonChrome($('#comparison-chrome'), $('#file-sheet'), {
   mode: setMode, clear, swap, readFiles, currentDoc,
   paste: pasteFromClipboard,
   save: (side) => saveCopy(currentDoc(side)),
+  versions: (side, anchor, sheet) => menu.open(side, anchor, sheet),
 });
+const versions = createVersions({
+  busy(status) {
+    dropPendingReads();
+    cancelWorker();
+    state.editing = false;
+    state.status = status;
+    state.selectionNotice = '';
+    message('');
+    render();
+  },
+  show(docs, note) {
+    state.pair = docs;
+    state.versionNote = note;
+    startComparison();
+  },
+  fail(error, retry) {
+    menu.refresh();
+    state.status = 'github-error';
+    const empty = !state.pair.before && !state.pair.after;
+    if (empty) {
+      for (const textarea of Object.values(drafts)) textarea.value = '';
+      state.editing = true;
+    }
+    // Only a network failure can pass on a retry; GitHub's answer won't change for a missing file or a spent limit.
+    message(error.message, true, error.kind === 'network' && { label: 'Try again', run: retry });
+    render();
+    if (empty) githubUrl.focus();
+  },
+  changed: () => menu.refresh(),
+  keepEdits,
+});
+const menu = createVersionMenu(versions, { swap });
 const display = createComparisonView(comparison, chrome);
 
 function cancelWorker() {
@@ -29,31 +68,56 @@ function cancelWorker() {
   state.timeout = null;
   state.requestId++;
 }
-function message(text, error = false) {
+function message(text, error = false, action = null) {
   const combined = [state.selectionNotice, text].filter(Boolean).join(' ');
-  notice.textContent = combined;
+  notice.replaceChildren(combined);
+  if (combined && action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'notice-action';
+    button.textContent = action.label;
+    button.addEventListener('click', action.run);
+    notice.append(' ', button);
+  }
   notice.hidden = !combined;
   notice.classList.toggle('error', error);
 }
 function render() {
   const loaded = !!(state.pair.before || state.pair.after);
-  const busy = state.status === 'reading' || state.status === 'working';
+  const fetching = GITHUB_BUSY.includes(state.status);
+  const busy = state.status === 'reading' || state.status === 'working' || fetching;
   chrome.render({
     mode: state.editing ? 'edit' : state.view, docs: { ...state.pair },
     status: state.status, stats: state.result?.stats ?? null, loaded, busy,
+    versions: !!versions.state?.history.length,
   });
+  githubForm.hidden = loaded || !state.editing;
+  if (!githubForm.hidden && versions.state && document.activeElement !== githubUrl) githubUrl.value = versions.state.url;
+  $('#loading').hidden = loaded || !fetching;
   const refocus = !state.editing && editor.contains(document.activeElement);
   comparison.hidden = !loaded || state.editing;
   editor.hidden = !state.editing;
   if (refocus) comparison.focus({ preventScroll: true });
-  $('#example').hidden = loaded;
+  $('#example').hidden = loaded || fetching;
   comparison.tabIndex = state.view === 'source' ? 0 : -1;
   if (state.view === 'source' && loaded) comparison.title = 'Click to edit';
   else comparison.removeAttribute('title');
   comparison.setAttribute('aria-busy', String(busy));
 }
+/** While the page shows GitHub versions, note what the page link leaves out; once neither side is from GitHub, drop the link. */
+function syncVersions() {
+  if (!versions.state) return;
+  if (!SIDES.some((side) => state.pair[side]?.version)) {
+    versions.clear(false);
+    state.versionNote = '';
+    return;
+  }
+  const changed = SIDES.some((side) => state.pair[side] && (!state.pair[side].version || state.pair[side].edited));
+  state.selectionNotice = changed ? "The page link opens the GitHub versions, without your changes." : state.versionNote;
+}
 function startComparison() {
   state.editing = false;
+  syncVersions();
   cancelWorker();
   message('');
   state.result = null;
@@ -79,7 +143,9 @@ function startComparison() {
     state.timeout = null;
     state.result = data.comparison;
     const { added, removed, changed } = state.result.stats;
-    state.status = !added && !removed && !changed ? 'identical' : state.result.rows.every((row) => row.kind === 'same') ? 'rendered-same' : 'different';
+    const { before, after } = state.pair;
+    state.status = before?.version && before.version.sha === after?.version?.sha && !before.edited && !after.edited ? 'same-version'
+      : !added && !removed && !changed ? 'identical' : state.result.rows.every((row) => row.kind === 'same') ? 'rendered-same' : 'different';
     message(state.result.precision.warnings.length ? `Simplified comparison. ${state.result.precision.warnings.join(' ')}` : '');
     render();
     display.reset(state.result, Object.fromEntries(SIDES.map((side) => [side, state.pair[side]?.name || 'Empty document'])));
@@ -153,7 +219,7 @@ const newName = (side) => side === 'before' ? 'Original.md' : 'Changed.md';
 const draftChanged = (side) => drafts[side].value !== (state.pair[side]?.text ?? '').replace(/\r\n?/g, '\n');
 function currentDoc(side) {
   return state.editing && draftChanged(side)
-    ? { name: state.pair[side]?.name || newName(side), text: drafts[side].value, edited: true }
+    ? { ...state.pair[side], name: state.pair[side]?.name || newName(side), text: drafts[side].value, edited: true }
     : state.pair[side];
 }
 function syncDrafts() {
@@ -184,8 +250,12 @@ function compareEdits() {
 editor.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); compareEdits(); }
 });
+const hasEdits = () => SIDES.some((side) => state.pair[side]?.edited || (state.editing && draftChanged(side)));
+function keepEdits() {
+  return !hasEdits() || confirm('Discard your edits and load from GitHub?');
+}
 window.addEventListener('beforeunload', (event) => {
-  if (state.pair.before?.edited || state.pair.after?.edited || (state.editing && (draftChanged('before') || draftChanged('after')))) {
+  if (hasEdits()) {
     event.preventDefault();
     event.returnValue = true;
   }
@@ -194,9 +264,12 @@ function swap() {
   syncDrafts();
   dropPendingReads();
   state.pair = { before: state.pair.after, after: state.pair.before };
+  versions.swap();
   startComparison();
 }
 function clear() {
+  if (versions.state) versions.clear();
+  state.versionNote = '';
   dropPendingReads();
   cancelWorker();
   state.pair = { before: null, after: null };
@@ -271,10 +344,37 @@ document.addEventListener('drop', (event) => {
   document.querySelectorAll('.drag-over').forEach((node) => node.classList.remove('drag-over'));
   readFiles(event.dataTransfer.files, event.target.closest('[data-side]')?.dataset.side);
 });
+/** Opens a GitHub link; false when the text isn't one. */
+function openGitHub(text) {
+  if (!parseGitHubUrl(text)) return false;
+  if (keepEdits()) versions.open(text);
+  return true;
+}
+githubForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const valid = openGitHub(githubUrl.value);
+  githubUrl.setAttribute('aria-invalid', String(!valid));
+  $('#github-url-error').hidden = valid;
+});
+githubUrl.addEventListener('input', () => {
+  githubUrl.setAttribute('aria-invalid', 'false');
+  $('#github-url-error').hidden = true;
+});
+addEventListener('popstate', () => {
+  menu.close();
+  if (!versions.syncFromUrl() && SIDES.some((side) => state.pair[side]?.version)) clear();
+});
+
 document.addEventListener('paste', (event) => {
-  if (event.target instanceof Element && event.target.closest('#editor')) return;
   const { files } = event.clipboardData;
   const text = event.clipboardData.getData('text/plain');
+  // A GitHub link pasted outside a text field, or into an empty editor box, opens that file's versions.
+  const field = event.target instanceof Element ? event.target.closest('input, textarea') : null;
+  if (!files.length && (!field || (field.closest('#editor') && !field.value)) && openGitHub(text.trim())) {
+    event.preventDefault();
+    return;
+  }
+  if (event.target instanceof Element && event.target.closest('#editor, #github-form')) return;
   if (!files.length && !text) return;
   event.preventDefault();
   const side = document.activeElement?.closest('[data-side]')?.dataset.side || (state.pair.before ? 'after' : 'before');
@@ -285,4 +385,4 @@ if (location.pathname.replace(/\/$/, '') === `${import.meta.env.BASE_URL}example
   document.title = 'Markdown Diff example';
   state.pair = structuredClone(example);
   startComparison();
-} else openEditor('before');
+} else if (!versions.syncFromUrl()) openEditor('before');

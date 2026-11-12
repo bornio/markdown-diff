@@ -13,7 +13,7 @@
         document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#ffffff' : '#151618';
       })();
     </script>
-    <meta name="description" content="Compare Markdown files side by side, with precise highlights in rendered tables, lists, and source. Files stay in your browser." />
+    <meta name="description" content="Compare Markdown files, or two versions of a GitHub file, side by side, with precise highlights in rendered tables, lists, and source. Files stay in your browser." />
     <title>Markdown Diff</title>
     <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
   </head>
@@ -44,10 +44,17 @@
       </header>
       <main id="main">
         <div id="notice" class="notice" hidden role="alert"></div>
+        <form id="github-form" class="github-form" novalidate hidden>
+          <label for="github-url">Compare versions of a GitHub file</label>
+          <div class="github-form-row"><input id="github-url" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="github.com/owner/repo/blob/main/README.md or a gist link" aria-describedby="github-url-error github-url-hint"><button type="submit">Load versions</button></div>
+          <p id="github-url-error" class="github-form-error" hidden>Paste a link to a Markdown file in a public GitHub repo, or to a gist.</p>
+          <p id="github-url-hint" class="github-form-hint">Public repos and gists, including secret gists. No sign-in needed.</p>
+        </form>
+        <div id="loading" class="loading-panes" aria-hidden="true" hidden><div><span></span><span></span><span></span><span></span><span></span><span></span></div><div><span></span><span></span><span></span><span></span><span></span><span></span></div></div>
         <section id="comparison" aria-label="Markdown comparison" tabindex="-1" hidden></section>
         <section id="editor" class="editor" aria-label="Edit Markdown" hidden><textarea data-side="before" spellcheck="false" aria-label="Original Markdown" placeholder="Type or paste the original Markdown, or drop a file here"></textarea><textarea data-side="after" spellcheck="false" aria-label="Changed Markdown" placeholder="Type or paste the changed Markdown, or drop a file here"></textarea></section>
       </main>
-      <footer><span title="Files are never uploaded. Remote Markdown images load directly from their URLs.">Files stay in your browser</span><a id="example" class="text-button" href="%BASE_URL%example/">Try an example <span aria-hidden="true">→</span></a></footer>
+      <footer><span title="Files are never uploaded. GitHub links load straight from GitHub, and remote Markdown images from their URLs.">Files stay in your browser</span><a id="example" class="text-button" href="%BASE_URL%example/">Try an example <span aria-hidden="true">→</span></a></footer>
     </div>
     <dialog id="file-sheet" class="file-sheet" aria-labelledby="file-sheet-label">
       <div class="file-sheet-panel">
