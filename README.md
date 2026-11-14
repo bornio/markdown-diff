@@ -2,6 +2,9 @@
 
 Compare Markdown files side by side, with changes inside rendered tables, lists, headings, and text. Switch to Source to see the Markdown itself. Paste a GitHub file or gist link to compare its versions.
 
+<img width="2048" height="1036" alt="image" src="https://github.com/user-attachments/assets/04d9bfb6-b30e-47d5-bb59-5cffd4c0f370" />
+
+
 [Open the app](https://bornio.github.io/markdown-diff/) · [Try the example](https://bornio.github.io/markdown-diff/example/)
 
 ## Compare files
