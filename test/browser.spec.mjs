@@ -465,6 +465,59 @@ test('GitHub links come from the form, a paste, or an empty editor box, and edit
   expect(query(page).file).toBe('notes.md');
 });
 
+test('GitHub validation focuses and describes invalid links, then clears on editing', async ({ page }) => {
+  await mockGitHub(page);
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const input = page.locator('#github-url');
+  const error = page.locator('#github-url-error');
+  const hint = 'Public repos and gists, including secret gists. No sign-in needed.';
+  await expect(error).toBeEmpty();
+  await expect(error).toHaveAttribute('aria-atomic', 'true');
+  await expect(input).toHaveAccessibleDescription(hint);
+  for (const link of ['https://github.com/o/r/blob/main/bad%ZZ.md', 'not a GitHub link']) {
+    await input.fill(link);
+    await expect(error).toBeHidden();
+    await expect(input).toHaveAttribute('aria-invalid', 'false');
+    await expect(input).toHaveAccessibleDescription(hint);
+    await page.getByRole('button', { name: 'Load versions' }).click();
+    await expect(error).toBeVisible();
+    await expect(error).toHaveAttribute('role', 'alert');
+    await expect(input).toBeFocused();
+    await expect(input).toHaveAttribute('aria-invalid', 'true');
+    await expect(input).toHaveAccessibleDescription(`Paste a link to a Markdown file in a public GitHub repo, or to a gist. ${hint}`);
+  }
+  // Observe the live region's empty and populated states across repeated Enter submissions.
+  await error.evaluate((node) => {
+    globalThis.errorAnnouncements = [];
+    new MutationObserver(() => globalThis.errorAnnouncements.push(node.textContent))
+      .observe(node, { childList: true, characterData: true, subtree: true });
+  });
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await input.press('Enter');
+    await expect.poll(() => page.evaluate(() => globalThis.errorAnnouncements.filter(Boolean).length)).toBe(attempt);
+    await expect(input).toBeFocused();
+  }
+  expect(await page.evaluate(() => globalThis.errorAnnouncements)).toEqual([
+    '', 'Paste a link to a Markdown file in a public GitHub repo, or to a gist.',
+    '', 'Paste a link to a Markdown file in a public GitHub repo, or to a gist.',
+  ]);
+  // Editing before the delayed announcement must cancel it without disturbing the next focus.
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await input.press('Enter');
+  await input.fill(REPO_LINK);
+  await page.locator('#editor [data-side=after]').focus();
+  await page.clock.runFor(200);
+  await expect(page.locator('#editor [data-side=after]')).toBeFocused();
+  await expect(error).toBeHidden();
+  await expect(input).toHaveAccessibleDescription(hint);
+  await page.clock.resume();
+  await input.press('Enter');
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  expect(errors).toEqual([]);
+});
+
 test('GitHub failures explain themselves and offer a retry only when one can help', async ({ page }) => {
   await mockGitHub(page, { fail: 'missing' });
   await page.goto(linkTo(REPO_LINK));
@@ -564,6 +617,129 @@ test.describe('on a touch phone', () => {
     await expect(page.locator('#status')).toHaveText('Comparison ready');
     await expect(page.locator('#after-name')).toHaveText('right.md');
     await expect(page.locator('#before-name')).toHaveText('left.md');
+  });
+
+  test('a share failure downloads the latest draft and clears the notice', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(globalThis.navigator, 'canShare', { value: () => true });
+      Object.defineProperty(globalThis.navigator, 'share', { value: async () => {
+        throw new globalThis.DOMException('Sharing is blocked', 'NotAllowedError');
+      } });
+    });
+    await page.goto('./');
+    await drop(page, 'before', [file('left.md', 'old words'), file('right.md', 'new words')]);
+    await expect(page.locator('#status')).toHaveText('Comparison ready');
+    await page.locator('#edit-view').tap();
+    const text = `# Edited draft\n\n${Array.from({ length: 80 }, (_, index) => `Paragraph ${index}. Words to save.`).join('\n\n')}\n`;
+    await page.locator('#editor [data-side=after]').fill(text);
+    await page.locator('#rendered-view').tap();
+    await expect(page.locator('.document-cell[data-side=after]').last()).toContainText('Paragraph 79.');
+    await scrollTo(page, 1200);
+    await expect.poll(() => page.evaluate(() => globalThis.scrollY)).toBeGreaterThan(200);
+    await page.locator('#after-name summary').focus();
+    await page.locator('#after-name summary').tap();
+    await page.getByRole('button', { name: 'Save or share a copy' }).tap();
+    const notice = page.locator('#notice');
+    await expect(notice).toContainText('Could not share this file.');
+    await expect(notice.getByRole('button', { name: 'Download instead' })).toBeInViewport();
+    await expect(page.locator('#file-sheet')).toBeHidden();
+    // Recovery saves the latest draft on the original side, even if the other editor has focus.
+    await page.locator('#edit-view').tap();
+    await page.locator('#editor [data-side=after]').fill('A later edit');
+    await page.locator('#editor [data-side=before]').fill('The other side');
+    const [saved] = await Promise.all([
+      page.waitForEvent('download'), notice.getByRole('button', { name: 'Download instead' }).tap(),
+    ]);
+    expect(saved.suggestedFilename()).toBe('right.md');
+    expect(await readFile(await saved.path(), 'utf8')).toBe('A later edit');
+    await expect(notice).toBeHidden();
+  });
+
+  test('share recovery preserves the simplified-comparison warning', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(globalThis.navigator, 'canShare', { value: () => true });
+      Object.defineProperty(globalThis.navigator, 'share', { value: async () => {
+        throw new globalThis.DOMException('Sharing is blocked', 'NotAllowedError');
+      } });
+    });
+    await page.goto('./');
+    const before = Array.from({ length: 250 }, (_, i) => `Original item ${i} alpha`).join('\n\n');
+    const after = Array.from({ length: 250 }, (_, i) => `Replacement ${i} omega`).join('\n\n');
+    await drop(page, 'before', [file('left.md', before), file('right.md', after)]);
+    const notice = page.locator('#notice');
+    await expect(notice).toContainText('Simplified comparison.');
+    const warning = await notice.textContent();
+    await page.locator('#after-name summary').tap();
+    await page.getByRole('button', { name: 'Save or share a copy' }).tap();
+    await expect(notice).toContainText('Could not share this file.');
+    await expect(notice).toContainText(warning);
+    const [saved] = await Promise.all([
+      page.waitForEvent('download'), notice.getByRole('button', { name: 'Download instead' }).tap(),
+    ]);
+    expect(await readFile(await saved.path(), 'utf8')).toBe(after);
+    await expect(notice).toHaveText(warning);
+    await expect(notice).not.toHaveClass(/error/);
+    await expect(notice.getByRole('button')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Clear files', exact: true }).tap();
+    await expect(notice).toBeHidden();
+  });
+
+  test('replacing, swapping, or clearing files dismisses share recovery, including late failures', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(globalThis.navigator, 'canShare', { value: () => true });
+      Object.defineProperty(globalThis.navigator, 'share', { value: () => new Promise((resolve, reject) => {
+        globalThis.failShare = () => reject(new globalThis.DOMException('Sharing failed', 'NotAllowedError'));
+      }) });
+    });
+    await page.goto('./');
+    for (const action of ['replace', 'swap', 'clear']) {
+      for (const late of [false, true]) {
+        await drop(page, 'before', [file('left.md', 'old words'), file('right.md', 'new words')]);
+        await expect(page.locator('#status')).toHaveText('Comparison ready');
+        await page.locator('#after-name summary').tap();
+        await page.getByRole('button', { name: 'Save or share a copy' }).tap();
+        if (!late) {
+          await page.evaluate(() => globalThis.failShare());
+          await expect(page.getByRole('button', { name: 'Download instead' })).toBeVisible();
+        }
+        if (action === 'replace') await drop(page, 'after', file('replacement.md', 'replacement words'));
+        else if (action === 'swap') {
+          await page.locator('#after-name summary').tap();
+          await page.getByRole('button', { name: 'Swap sides', exact: true }).tap();
+        } else await page.getByRole('button', { name: 'Clear files', exact: true }).tap();
+        await expect(page.locator('#status')).toHaveText(action === 'clear' ? 'Ready when you are' : 'Comparison ready');
+        if (late) await page.evaluate(() => globalThis.failShare());
+        await expect(page.getByRole('button', { name: 'Download instead' })).toHaveCount(0);
+        await expect(page.locator('#notice')).toBeHidden();
+      }
+    }
+  });
+
+  test('successful sharing and user cancellation stay quiet', async ({ page }) => {
+    await page.addInitScript(() => {
+      globalThis.shareCalls = 0;
+      Object.defineProperty(globalThis.navigator, 'canShare', { value: () => true });
+      Object.defineProperty(globalThis.navigator, 'share', { value: async ({ files }) => {
+        globalThis.sharedFile = { name: files[0].name, text: await files[0].text() };
+        globalThis.shareCalls++;
+        if (globalThis.shareError) throw new globalThis.DOMException('Share cancelled', globalThis.shareError);
+      } });
+    });
+    await page.goto('./');
+    const downloads = [];
+    page.on('download', (download) => downloads.push(download.suggestedFilename()));
+    await drop(page, 'before', [file('left.md', 'old words'), file('right.md', 'new words')]);
+    await expect(page.locator('#status')).toHaveText('Comparison ready');
+    for (const [index, error] of [null, 'AbortError'].entries()) {
+      await page.evaluate((name) => { globalThis.shareError = name; }, error);
+      await page.locator('#after-name summary').tap();
+      await page.getByRole('button', { name: 'Save or share a copy' }).tap();
+      await expect.poll(() => page.evaluate(() => globalThis.shareCalls)).toBe(index + 1);
+      expect(await page.evaluate(() => globalThis.sharedFile)).toEqual({ name: 'right.md', text: 'new words' });
+      await expect(page.locator('#file-sheet')).toBeHidden();
+      await expect(page.locator('#notice')).toBeHidden();
+    }
+    expect(downloads).toEqual([]);
   });
 
   test('the file sheet keeps keyboard focus inside until Escape returns it to the filename', async ({ page }) => {

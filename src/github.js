@@ -18,8 +18,11 @@ export class GitHubError extends Error {
  */
 export function parseGitHubUrl(input) {
   let url;
-  try { url = new URL(/^https?:\/\//i.test(input.trim()) ? input.trim() : `https://${input.trim()}`); } catch { return null; }
-  const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  let parts;
+  try {
+    url = new URL(/^https?:\/\//i.test(input.trim()) ? input.trim() : `https://${input.trim()}`);
+    parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  } catch { return null; }
   const host = url.hostname.replace(/^www\./, '');
   if (host === 'gist.github.com') {
     const [owner, id] = parts.length === 1 ? [null, parts[0]] : parts;

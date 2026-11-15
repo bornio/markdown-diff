@@ -21,10 +21,12 @@ const editor = $('#editor');
 const drafts = { before: $('#editor [data-side=before]'), after: $('#editor [data-side=after]') };
 const githubForm = $('#github-form');
 const githubUrl = $('#github-url');
+const githubError = $('#github-url-error');
+let githubErrorTimer;
 const chrome = createComparisonChrome($('#comparison-chrome'), $('#file-sheet'), {
   mode: setMode, clear, swap, readFiles, currentDoc,
   paste: pasteFromClipboard,
-  save: (side) => saveCopy(currentDoc(side)),
+  save: saveCopy,
   versions: (side, anchor, sheet) => menu.open(side, anchor, sheet),
 });
 const versions = createVersions({
@@ -82,6 +84,10 @@ function message(text, error = false, action = null) {
   notice.hidden = !combined;
   notice.classList.toggle('error', error);
 }
+function comparisonWarning() {
+  const warnings = state.result?.precision.warnings || [];
+  return warnings.length ? `Simplified comparison. ${warnings.join(' ')}` : '';
+}
 function render() {
   const loaded = !!(state.pair.before || state.pair.after);
   const fetching = GITHUB_BUSY.includes(state.status);
@@ -92,6 +98,7 @@ function render() {
     versions: !!versions.state?.history.length,
   });
   githubForm.hidden = loaded || !state.editing;
+  if (githubForm.hidden) clearGitHubError();
   if (!githubForm.hidden && versions.state && document.activeElement !== githubUrl) githubUrl.value = versions.state.url;
   $('#loading').hidden = loaded || !fetching;
   const refocus = !state.editing && editor.contains(document.activeElement);
@@ -146,7 +153,7 @@ function startComparison() {
     const { before, after } = state.pair;
     state.status = before?.version && before.version.sha === after?.version?.sha && !before.edited && !after.edited ? 'same-version'
       : !added && !removed && !changed ? 'identical' : state.result.rows.every((row) => row.kind === 'same') ? 'rendered-same' : 'different';
-    message(state.result.precision.warnings.length ? `Simplified comparison. ${state.result.precision.warnings.join(' ')}` : '');
+    message(comparisonWarning());
     render();
     display.reset(state.result, Object.fromEntries(SIDES.map((side) => [side, state.pair[side]?.name || 'Empty document'])));
     display.show(state.view);
@@ -302,14 +309,32 @@ async function pasteFromClipboard(side) {
   catch { message('This browser blocked clipboard access. Choose Edit, then touch and hold in a box to paste.', true); return; }
   if (text) readFiles([pastedFile(text)], side);
 }
-async function saveCopy({ name, text }) {
+async function saveCopy(side) {
+  const doc = currentDoc(side);
+  const { name, text } = doc;
+  const requestId = state.requestId;
   const file = new File([text], name, { type: 'text/markdown' });
-  if (navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: name }); } catch {}
+  try {
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title: name });
+      return;
+    }
+  } catch (error) {
+    // Replacing, clearing, swapping, or comparing files dismisses recovery, including a late share failure.
+    if (error.name !== 'AbortError' && requestId === state.requestId) {
+      message([comparisonWarning(), 'Could not share this file.'].filter(Boolean).join(' '), true, { label: 'Download instead', run: () => {
+        downloadCopy(currentDoc(side));
+        message(comparisonWarning());
+      } });
+      chrome.scrollTo(notice);
+    }
     return;
   }
+  downloadCopy(doc);
+}
+function downloadCopy({ name, text }) {
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(file);
+  link.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
   link.download = name;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href));
@@ -350,16 +375,25 @@ function openGitHub(text) {
   if (keepEdits()) versions.open(text);
   return true;
 }
+function clearGitHubError() {
+  clearTimeout(githubErrorTimer);
+  githubError.textContent = '';
+  githubUrl.setAttribute('aria-invalid', 'false');
+  githubUrl.setAttribute('aria-describedby', 'github-url-hint');
+}
 githubForm.addEventListener('submit', (event) => {
   event.preventDefault();
-  const valid = openGitHub(githubUrl.value);
-  githubUrl.setAttribute('aria-invalid', String(!valid));
-  $('#github-url-error').hidden = valid;
+  clearGitHubError();
+  if (openGitHub(githubUrl.value)) return;
+  githubUrl.setAttribute('aria-invalid', 'true');
+  githubUrl.setAttribute('aria-describedby', 'github-url-error github-url-hint');
+  githubUrl.focus();
+  // Give the live region an empty state before repeating the same error, including on Enter.
+  githubErrorTimer = setTimeout(() => {
+    githubError.textContent = 'Paste a link to a Markdown file in a public GitHub repo, or to a gist.';
+  }, 100);
 });
-githubUrl.addEventListener('input', () => {
-  githubUrl.setAttribute('aria-invalid', 'false');
-  $('#github-url-error').hidden = true;
-});
+githubUrl.addEventListener('input', clearGitHubError);
 addEventListener('popstate', () => {
   menu.close();
   if (!versions.syncFromUrl() && SIDES.some((side) => state.pair[side]?.version)) clear();
