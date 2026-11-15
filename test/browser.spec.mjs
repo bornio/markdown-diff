@@ -465,6 +465,34 @@ test('GitHub links come from the form, a paste, or an empty editor box, and edit
   expect(query(page).file).toBe('notes.md');
 });
 
+test('GitHub validation focuses and describes invalid links, then clears on editing', async ({ page }) => {
+  await mockGitHub(page);
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const input = page.locator('#github-url');
+  const error = page.locator('#github-url-error');
+  const hint = 'Public repos and gists, including secret gists. No sign-in needed.';
+  await expect(input).toHaveAccessibleDescription(hint);
+  for (const link of ['https://github.com/o/r/blob/main/bad%ZZ.md', 'not a GitHub link']) {
+    await input.fill(link);
+    await expect(error).toBeHidden();
+    await expect(input).toHaveAttribute('aria-invalid', 'false');
+    await expect(input).toHaveAccessibleDescription(hint);
+    await page.getByRole('button', { name: 'Load versions' }).click();
+    await expect(error).toBeVisible();
+    await expect(error).toHaveAttribute('role', 'alert');
+    await expect(input).toBeFocused();
+    await expect(input).toHaveAttribute('aria-invalid', 'true');
+    await expect(input).toHaveAccessibleDescription(`Paste a link to a Markdown file in a public GitHub repo, or to a gist. ${hint}`);
+  }
+  await input.fill(REPO_LINK);
+  await expect(error).toBeHidden();
+  await expect(input).toHaveAccessibleDescription(hint);
+  await input.press('Enter');
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  expect(errors).toEqual([]);
+});
+
 test('GitHub failures explain themselves and offer a retry only when one can help', async ({ page }) => {
   await mockGitHub(page, { fail: 'missing' });
   await page.goto(linkTo(REPO_LINK));
@@ -564,6 +592,67 @@ test.describe('on a touch phone', () => {
     await expect(page.locator('#status')).toHaveText('Comparison ready');
     await expect(page.locator('#after-name')).toHaveText('right.md');
     await expect(page.locator('#before-name')).toHaveText('left.md');
+  });
+
+  test('a share failure offers a download of the attempted draft', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(globalThis.navigator, 'canShare', { value: () => true });
+      Object.defineProperty(globalThis.navigator, 'share', { value: async () => {
+        throw new globalThis.DOMException('Sharing is blocked', 'NotAllowedError');
+      } });
+    });
+    await page.goto('./');
+    await drop(page, 'before', [file('left.md', 'old words'), file('right.md', 'new words')]);
+    await expect(page.locator('#status')).toHaveText('Comparison ready');
+    await page.locator('#edit-view').tap();
+    const text = `# Edited draft\n\n${Array.from({ length: 80 }, (_, index) => `Paragraph ${index}. Words to save.`).join('\n\n')}\n`;
+    await page.locator('#editor [data-side=after]').fill(text);
+    await page.locator('#rendered-view').tap();
+    await expect(page.locator('.document-cell[data-side=after]').last()).toContainText('Paragraph 79.');
+    await scrollTo(page, 1200);
+    await expect.poll(() => page.evaluate(() => globalThis.scrollY)).toBeGreaterThan(200);
+    await page.locator('#after-name summary').focus();
+    await page.locator('#after-name summary').tap();
+    await page.getByRole('button', { name: 'Save or share a copy' }).tap();
+    const notice = page.locator('#notice');
+    await expect(notice).toContainText('Could not share this file.');
+    await expect(notice.getByRole('button', { name: 'Download instead' })).toBeInViewport();
+    await expect(page.locator('#file-sheet')).toBeHidden();
+    // The fallback saves the attempted copy, even if the editor changes before it is used.
+    await page.locator('#edit-view').tap();
+    await page.locator('#editor [data-side=after]').fill('A later edit');
+    const [saved] = await Promise.all([
+      page.waitForEvent('download'), notice.getByRole('button', { name: 'Download instead' }).tap(),
+    ]);
+    expect(saved.suggestedFilename()).toBe('right.md');
+    expect(await readFile(await saved.path(), 'utf8')).toBe(text);
+  });
+
+  test('successful sharing and user cancellation stay quiet', async ({ page }) => {
+    await page.addInitScript(() => {
+      globalThis.shareCalls = 0;
+      Object.defineProperty(globalThis.navigator, 'canShare', { value: () => true });
+      Object.defineProperty(globalThis.navigator, 'share', { value: async ({ files }) => {
+        globalThis.sharedFile = { name: files[0].name, text: await files[0].text() };
+        globalThis.shareCalls++;
+        if (globalThis.shareError) throw new globalThis.DOMException('Share cancelled', globalThis.shareError);
+      } });
+    });
+    await page.goto('./');
+    const downloads = [];
+    page.on('download', (download) => downloads.push(download.suggestedFilename()));
+    await drop(page, 'before', [file('left.md', 'old words'), file('right.md', 'new words')]);
+    await expect(page.locator('#status')).toHaveText('Comparison ready');
+    for (const [index, error] of [null, 'AbortError'].entries()) {
+      await page.evaluate((name) => { globalThis.shareError = name; }, error);
+      await page.locator('#after-name summary').tap();
+      await page.getByRole('button', { name: 'Save or share a copy' }).tap();
+      await expect.poll(() => page.evaluate(() => globalThis.shareCalls)).toBe(index + 1);
+      expect(await page.evaluate(() => globalThis.sharedFile)).toEqual({ name: 'right.md', text: 'new words' });
+      await expect(page.locator('#file-sheet')).toBeHidden();
+      await expect(page.locator('#notice')).toBeHidden();
+    }
+    expect(downloads).toEqual([]);
   });
 
   test('the file sheet keeps keyboard focus inside until Escape returns it to the filename', async ({ page }) => {

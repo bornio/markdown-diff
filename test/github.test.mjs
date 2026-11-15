@@ -34,6 +34,18 @@ test('links to anything but a Markdown file or gist are refused', () => {
   ]) assert.equal(parseGitHubUrl(link), null, link);
 });
 
+test('malformed URL escapes are refused while encoded filenames stay intact', () => {
+  for (const link of [
+    'https://github.com/o/r/blob/main/bad%ZZ.md',
+    'https://raw.githubusercontent.com/o/r/main/bad%C3.md',
+    'https://gist.github.com/o/%',
+    'https://example.com/%ZZ',
+  ]) assert.equal(parseGitHubUrl(link), null, link);
+  const source = parseGitHubUrl('https://github.com/o/r/blob/main/caf%C3%A9%20notes.md');
+  assert.equal(source.path, 'café notes.md');
+  assert.equal(source.url, 'https://github.com/o/r/blob/main/caf%C3%A9%20notes.md');
+});
+
 test('a branch with slashes is found by moving one path segment at a time into the branch name', async () => {
   const asked = [];
   globalThis.fetch = async (url) => {

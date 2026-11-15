@@ -304,13 +304,24 @@ async function pasteFromClipboard(side) {
 }
 async function saveCopy({ name, text }) {
   const file = new File([text], name, { type: 'text/markdown' });
-  if (navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: name }); } catch {}
+  try {
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title: name });
+      return;
+    }
+  } catch (error) {
+    if (error.name !== 'AbortError') {
+      message('Could not share this file.', true, { label: 'Download instead', run: () => downloadCopy(file) });
+      chrome.scrollTo(notice);
+    }
     return;
   }
+  downloadCopy(file);
+}
+function downloadCopy(file) {
   const link = document.createElement('a');
   link.href = URL.createObjectURL(file);
-  link.download = name;
+  link.download = file.name;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href));
 }
@@ -354,10 +365,13 @@ githubForm.addEventListener('submit', (event) => {
   event.preventDefault();
   const valid = openGitHub(githubUrl.value);
   githubUrl.setAttribute('aria-invalid', String(!valid));
+  githubUrl.setAttribute('aria-describedby', valid ? 'github-url-hint' : 'github-url-error github-url-hint');
   $('#github-url-error').hidden = valid;
+  if (!valid) githubUrl.focus();
 });
 githubUrl.addEventListener('input', () => {
   githubUrl.setAttribute('aria-invalid', 'false');
+  githubUrl.setAttribute('aria-describedby', 'github-url-hint');
   $('#github-url-error').hidden = true;
 });
 addEventListener('popstate', () => {
