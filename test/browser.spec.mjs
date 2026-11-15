@@ -594,7 +594,7 @@ test.describe('on a touch phone', () => {
     await expect(page.locator('#before-name')).toHaveText('left.md');
   });
 
-  test('a share failure offers a download of the attempted draft', async ({ page }) => {
+  test('a share failure downloads the latest draft and clears the notice', async ({ page }) => {
     await page.addInitScript(() => {
       Object.defineProperty(globalThis.navigator, 'canShare', { value: () => true });
       Object.defineProperty(globalThis.navigator, 'share', { value: async () => {
@@ -618,14 +618,47 @@ test.describe('on a touch phone', () => {
     await expect(notice).toContainText('Could not share this file.');
     await expect(notice.getByRole('button', { name: 'Download instead' })).toBeInViewport();
     await expect(page.locator('#file-sheet')).toBeHidden();
-    // The fallback saves the attempted copy, even if the editor changes before it is used.
+    // Recovery saves the latest draft on the original side, even if the other editor has focus.
     await page.locator('#edit-view').tap();
     await page.locator('#editor [data-side=after]').fill('A later edit');
+    await page.locator('#editor [data-side=before]').fill('The other side');
     const [saved] = await Promise.all([
       page.waitForEvent('download'), notice.getByRole('button', { name: 'Download instead' }).tap(),
     ]);
     expect(saved.suggestedFilename()).toBe('right.md');
-    expect(await readFile(await saved.path(), 'utf8')).toBe(text);
+    expect(await readFile(await saved.path(), 'utf8')).toBe('A later edit');
+    await expect(notice).toBeHidden();
+  });
+
+  test('replacing, swapping, or clearing files dismisses share recovery, including late failures', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(globalThis.navigator, 'canShare', { value: () => true });
+      Object.defineProperty(globalThis.navigator, 'share', { value: () => new Promise((resolve, reject) => {
+        globalThis.failShare = () => reject(new globalThis.DOMException('Sharing failed', 'NotAllowedError'));
+      }) });
+    });
+    await page.goto('./');
+    for (const action of ['replace', 'swap', 'clear']) {
+      for (const late of [false, true]) {
+        await drop(page, 'before', [file('left.md', 'old words'), file('right.md', 'new words')]);
+        await expect(page.locator('#status')).toHaveText('Comparison ready');
+        await page.locator('#after-name summary').tap();
+        await page.getByRole('button', { name: 'Save or share a copy' }).tap();
+        if (!late) {
+          await page.evaluate(() => globalThis.failShare());
+          await expect(page.getByRole('button', { name: 'Download instead' })).toBeVisible();
+        }
+        if (action === 'replace') await drop(page, 'after', file('replacement.md', 'replacement words'));
+        else if (action === 'swap') {
+          await page.locator('#after-name summary').tap();
+          await page.getByRole('button', { name: 'Swap sides', exact: true }).tap();
+        } else await page.getByRole('button', { name: 'Clear files', exact: true }).tap();
+        await expect(page.locator('#status')).toHaveText(action === 'clear' ? 'Ready when you are' : 'Comparison ready');
+        if (late) await page.evaluate(() => globalThis.failShare());
+        await expect(page.getByRole('button', { name: 'Download instead' })).toHaveCount(0);
+        await expect(page.locator('#notice')).toBeHidden();
+      }
+    }
   });
 
   test('successful sharing and user cancellation stay quiet', async ({ page }) => {

@@ -24,7 +24,7 @@ const githubUrl = $('#github-url');
 const chrome = createComparisonChrome($('#comparison-chrome'), $('#file-sheet'), {
   mode: setMode, clear, swap, readFiles, currentDoc,
   paste: pasteFromClipboard,
-  save: (side) => saveCopy(currentDoc(side)),
+  save: saveCopy,
   versions: (side, anchor, sheet) => menu.open(side, anchor, sheet),
 });
 const versions = createVersions({
@@ -302,7 +302,10 @@ async function pasteFromClipboard(side) {
   catch { message('This browser blocked clipboard access. Choose Edit, then touch and hold in a box to paste.', true); return; }
   if (text) readFiles([pastedFile(text)], side);
 }
-async function saveCopy({ name, text }) {
+async function saveCopy(side) {
+  const doc = currentDoc(side);
+  const { name, text } = doc;
+  const requestId = state.requestId;
   const file = new File([text], name, { type: 'text/markdown' });
   try {
     if (navigator.canShare?.({ files: [file] })) {
@@ -310,18 +313,22 @@ async function saveCopy({ name, text }) {
       return;
     }
   } catch (error) {
-    if (error.name !== 'AbortError') {
-      message('Could not share this file.', true, { label: 'Download instead', run: () => downloadCopy(file) });
+    // Replacing, clearing, swapping, or comparing files dismisses recovery, including a late share failure.
+    if (error.name !== 'AbortError' && requestId === state.requestId) {
+      message('Could not share this file.', true, { label: 'Download instead', run: () => {
+        downloadCopy(currentDoc(side));
+        message('');
+      } });
       chrome.scrollTo(notice);
     }
     return;
   }
-  downloadCopy(file);
+  downloadCopy(doc);
 }
-function downloadCopy(file) {
+function downloadCopy({ name, text }) {
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(file);
-  link.download = file.name;
+  link.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
+  link.download = name;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href));
 }
