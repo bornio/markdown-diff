@@ -472,6 +472,8 @@ test('GitHub validation focuses and describes invalid links, then clears on edit
   const input = page.locator('#github-url');
   const error = page.locator('#github-url-error');
   const hint = 'Public repos and gists, including secret gists. No sign-in needed.';
+  await expect(error).toBeEmpty();
+  await expect(error).toHaveAttribute('aria-atomic', 'true');
   await expect(input).toHaveAccessibleDescription(hint);
   for (const link of ['https://github.com/o/r/blob/main/bad%ZZ.md', 'not a GitHub link']) {
     await input.fill(link);
@@ -485,9 +487,32 @@ test('GitHub validation focuses and describes invalid links, then clears on edit
     await expect(input).toHaveAttribute('aria-invalid', 'true');
     await expect(input).toHaveAccessibleDescription(`Paste a link to a Markdown file in a public GitHub repo, or to a gist. ${hint}`);
   }
+  // Observe the live region's empty and populated states across repeated Enter submissions.
+  await error.evaluate((node) => {
+    globalThis.errorAnnouncements = [];
+    new MutationObserver(() => globalThis.errorAnnouncements.push(node.textContent))
+      .observe(node, { childList: true, characterData: true, subtree: true });
+  });
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await input.press('Enter');
+    await expect.poll(() => page.evaluate(() => globalThis.errorAnnouncements.filter(Boolean).length)).toBe(attempt);
+    await expect(input).toBeFocused();
+  }
+  expect(await page.evaluate(() => globalThis.errorAnnouncements)).toEqual([
+    '', 'Paste a link to a Markdown file in a public GitHub repo, or to a gist.',
+    '', 'Paste a link to a Markdown file in a public GitHub repo, or to a gist.',
+  ]);
+  // Editing before the delayed announcement must cancel it without disturbing the next focus.
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await input.press('Enter');
   await input.fill(REPO_LINK);
+  await page.locator('#editor [data-side=after]').focus();
+  await page.clock.runFor(200);
+  await expect(page.locator('#editor [data-side=after]')).toBeFocused();
   await expect(error).toBeHidden();
   await expect(input).toHaveAccessibleDescription(hint);
+  await page.clock.resume();
   await input.press('Enter');
   await expect(page.locator('#status')).toHaveText('Comparison ready');
   expect(errors).toEqual([]);
@@ -627,6 +652,35 @@ test.describe('on a touch phone', () => {
     ]);
     expect(saved.suggestedFilename()).toBe('right.md');
     expect(await readFile(await saved.path(), 'utf8')).toBe('A later edit');
+    await expect(notice).toBeHidden();
+  });
+
+  test('share recovery preserves the simplified-comparison warning', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(globalThis.navigator, 'canShare', { value: () => true });
+      Object.defineProperty(globalThis.navigator, 'share', { value: async () => {
+        throw new globalThis.DOMException('Sharing is blocked', 'NotAllowedError');
+      } });
+    });
+    await page.goto('./');
+    const before = Array.from({ length: 250 }, (_, i) => `Original item ${i} alpha`).join('\n\n');
+    const after = Array.from({ length: 250 }, (_, i) => `Replacement ${i} omega`).join('\n\n');
+    await drop(page, 'before', [file('left.md', before), file('right.md', after)]);
+    const notice = page.locator('#notice');
+    await expect(notice).toContainText('Simplified comparison.');
+    const warning = await notice.textContent();
+    await page.locator('#after-name summary').tap();
+    await page.getByRole('button', { name: 'Save or share a copy' }).tap();
+    await expect(notice).toContainText('Could not share this file.');
+    await expect(notice).toContainText(warning);
+    const [saved] = await Promise.all([
+      page.waitForEvent('download'), notice.getByRole('button', { name: 'Download instead' }).tap(),
+    ]);
+    expect(await readFile(await saved.path(), 'utf8')).toBe(after);
+    await expect(notice).toHaveText(warning);
+    await expect(notice).not.toHaveClass(/error/);
+    await expect(notice.getByRole('button')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Clear files', exact: true }).tap();
     await expect(notice).toBeHidden();
   });
 
