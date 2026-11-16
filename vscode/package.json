@@ -1,0 +1,36 @@
+{
+  "name": "markdown-diff-vscode",
+  "displayName": "Markdown Diff",
+  "description": "Read rendered Markdown differences from the comparison already open in VS Code.",
+  "version": "0.1.0",
+  "publisher": "bornio",
+  "license": "UNLICENSED",
+  "repository": { "type": "git", "url": "https://github.com/bornio/markdown-diff" },
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "main": "./extension.cjs",
+  "extensionKind": ["workspace"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": true },
+    "virtualWorkspaces": { "supported": true }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "markdownDiff.renderComparison",
+        "title": "Render this comparison",
+        "category": "Markdown Diff",
+        "icon": "$(open-preview)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "markdownDiff.renderComparison",
+          "when": "isInDiffEditor && (resourceLangId == markdown || resourceExtname == .mdx || resourceExtname == .markdown || resourceExtname == .txt)",
+          "group": "navigation"
+        }
+      ]
+    }
+  }
+}

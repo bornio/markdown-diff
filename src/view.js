@@ -1,16 +1,34 @@
 import { partners } from './partners.js';
 import { presentTables } from './tables.js';
 
-export function createComparisonView(container, chrome) {
+export function createComparisonView(container, chrome, { renderDocument, onRendered, onError } = {}) {
   let comparison = null;
   let names = null;
   let current = null;
-  let frame = 0;
+  let alignmentFrame = 0;
   let resetSizes = false;
   const views = new Map();
   const nearRows = new Set();
   const activeRows = new Set();
   const measuredHeights = new WeakMap();
+
+  function attempt(action) {
+    if (!onError) return action();
+    try { return action(); }
+    catch (error) {
+      if (current) {
+        cancelAnimationFrame(current.frame);
+        cancelAnimationFrame(current.readyFrame);
+        current.frame = current.readyFrame = 0;
+      }
+      cancelAnimationFrame(alignmentFrame);
+      alignmentFrame = 0;
+      incremental.disconnect();
+      activeRows.clear();
+      current = null;
+      onError(error);
+    }
+  }
 
   function recordHeight(node, height) {
     if (height <= 0 || measuredHeights.get(node) === height) return;
@@ -24,14 +42,14 @@ export function createComparisonView(container, chrome) {
     for (const [node, height] of sizes) recordHeight(node, height);
   }
 
-  const resized = new ResizeObserver((entries) => {
+  const resized = new ResizeObserver((entries) => attempt(() => {
     for (const entry of entries) {
       const node = entry.target;
       if (!node.isConnected || !current?.root.contains(node)) continue;
       recordHeight(node, entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height);
     }
     scheduleAlignment();
-  });
+  }));
   const visible = new IntersectionObserver((entries) => {
     let entering = false;
     for (const entry of entries) {
@@ -70,7 +88,8 @@ export function createComparisonView(container, chrome) {
         edit.dataset.edit = edit.tagName === 'INS' ? 'add' : 'remove';
       }
       node.append(number, code);
-    } else node.innerHTML = content;
+    } else if (renderDocument) node.append(renderDocument(content));
+    else node.innerHTML = content;
 
     const empty = source ? !content : ![...node.childNodes].some((child) =>
       child.nodeType === Node.TEXT_NODE ? child.textContent.trim().length > 0 :
@@ -168,14 +187,14 @@ export function createComparisonView(container, chrome) {
       range.setAttribute('aria-atomic', 'true');
       next = document.createElement('button');
       next.textContent = 'Next';
-      const turn = (direction) => {
+      const turn = (direction) => attempt(() => {
         const destination = page + direction;
         if (destination < 0 || destination >= row.pages.length) return;
         page = destination;
         fill();
         scheduleAlignment(true);
         chrome.scrollTo(pager);
-      };
+      });
       back.onclick = () => turn(-1);
       next.onclick = () => turn(1);
       pager.append(back, range, next);
@@ -194,34 +213,52 @@ export function createComparisonView(container, chrome) {
     more.className = 'mount-progress';
     const rows = mode === 'source' ? comparison.source.rows : comparison.rows;
     if (mode === 'source') root.style.setProperty('--source-digits', String(String(rows.length || 1).length));
-    const view = { mode, root, more, rows, position: 0, end: 0, scroll: 0, frame: 0 };
+    const view = { mode, root, more, rows, position: 0, end: 0, scroll: 0, frame: 0, readyFrame: 0, mounted: false };
     views.set(mode, view);
     return view;
   }
 
   function step(view) {
-    view.frame = 0;
-    if (view !== current) return;
-    const source = view.mode === 'source';
-    const stop = Math.min(view.position + (source ? 80 : 12), view.end);
-    const fragment = document.createDocumentFragment();
-    while (view.position < stop) fragment.append(buildRow(view.rows[view.position++], source));
-    view.root.append(fragment);
-    if (view.position < view.end) view.frame = requestAnimationFrame(() => step(view));
-    else if (view.position < view.rows.length) {
-      view.more.textContent = `Loading as you scroll · ${view.position.toLocaleString()} of ${view.rows.length.toLocaleString()} ${source ? 'lines' : 'sections'}`;
-      view.root.append(view.more);
-      incremental.observe(view.more);
-    }
-    scheduleAlignment();
+    return attempt(() => {
+      view.frame = 0;
+      if (view !== current) return;
+      const source = view.mode === 'source';
+      const stop = Math.min(view.position + (source ? 80 : 12), view.end);
+      const fragment = document.createDocumentFragment();
+      while (view.position < stop) fragment.append(buildRow(view.rows[view.position++], source));
+      view.root.append(fragment);
+      if (view.position < view.end) view.frame = requestAnimationFrame(() => step(view));
+      else if (view.position < view.rows.length) {
+        view.more.textContent = `Loading as you scroll · ${view.position.toLocaleString()} of ${view.rows.length.toLocaleString()} ${source ? 'lines' : 'sections'}`;
+        view.root.append(view.more);
+        incremental.observe(view.more);
+      }
+      scheduleAlignment();
+      notifyMounted(view);
+    });
+  }
+
+  function notifyMounted(view) {
+    if (!onRendered || view !== current || view.mounted || view.readyFrame || view.position < view.end) return;
+    view.readyFrame = requestAnimationFrame(() => attempt(() => {
+      view.readyFrame = requestAnimationFrame(() => attempt(() => {
+        view.readyFrame = 0;
+        if (view !== current || view.mounted || view.position < view.end) return;
+        if (alignmentFrame) { notifyMounted(view); return; }
+        view.mounted = true;
+        onRendered();
+      }));
+    }));
   }
 
   function mountNext(view) {
-    if (!view || view !== current || view.frame || view.position >= view.rows.length) return;
-    incremental.disconnect();
-    view.more.remove();
-    view.end = Math.min(view.position + (view.mode === 'source' ? 400 : 120), view.rows.length);
-    step(view);
+    return attempt(() => {
+      if (!view || view !== current || view.frame || view.position >= view.rows.length) return;
+      incremental.disconnect();
+      view.more.remove();
+      view.end = Math.min(view.position + (view.mode === 'source' ? 400 : 120), view.rows.length);
+      step(view);
+    });
   }
 
   function pause() {
@@ -229,37 +266,42 @@ export function createComparisonView(container, chrome) {
     if (current) {
       current.scroll = window.scrollY;
       cancelAnimationFrame(current.frame);
+      cancelAnimationFrame(current.readyFrame);
       current.frame = 0;
+      current.readyFrame = 0;
     }
     incremental.disconnect();
     activeRows.clear();
-    cancelAnimationFrame(frame);
-    frame = 0;
+    cancelAnimationFrame(alignmentFrame);
+    alignmentFrame = 0;
     current = null;
   }
 
   function show(mode) {
-    if (!comparison) return;
-    pause();
-    const view = views.get(mode) || createView(mode);
-    current = view;
-    container.replaceChildren(view.root);
-    chrome.scrollTo(view.scroll);
-    for (const row of nearRows) {
-      if (!row.isConnected || !view.root.contains(row)) continue;
-      activeRows.add(row);
-    }
-    if (view.position < view.end) step(view);
-    else if (!view.position) mountNext(view);
-    else if (view.position < view.rows.length) incremental.observe(view.more);
-    scheduleAlignment(true);
+    return attempt(() => {
+      if (!comparison) return;
+      pause();
+      const view = views.get(mode) || createView(mode);
+      current = view;
+      container.replaceChildren(view.root);
+      chrome.scrollTo(view.scroll);
+      for (const row of nearRows) {
+        if (!row.isConnected || !view.root.contains(row)) continue;
+        activeRows.add(row);
+      }
+      if (view.position < view.end) step(view);
+      else if (!view.position) mountNext(view);
+      else if (view.position < view.rows.length) incremental.observe(view.more);
+      scheduleAlignment(true);
+      notifyMounted(view);
+    });
   }
 
   function scheduleAlignment(reset = false) {
     resetSizes ||= reset;
-    if (frame || current?.mode !== 'rendered') return;
-    frame = requestAnimationFrame(() => {
-      frame = 0;
+    if (alignmentFrame || current?.mode !== 'rendered') return;
+    alignmentFrame = requestAnimationFrame(() => attempt(() => {
+      alignmentFrame = 0;
       const pairs = [];
       for (const row of activeRows) {
         const byId = new Map();
@@ -289,7 +331,7 @@ export function createComparisonView(container, chrome) {
         const property = a.tagName === 'TR' ? 'height' : 'minHeight';
         a.style[property] = b.style[property] = `${Math.ceil(Math.max(ah, bh))}px`;
       }
-    });
+    }));
   }
 
   function reset(result = null, filenames = null) {
@@ -307,7 +349,7 @@ export function createComparisonView(container, chrome) {
   container.addEventListener('toggle', () => scheduleAlignment(true), true);
   // Opening or closing an expandable section does the same to its partner. Only clicks are mirrored
   // (Enter and Space on a summary click it), so an open state the author wrote still shows on load.
-  container.addEventListener('click', (event) => {
+  container.addEventListener('click', (event) => attempt(() => {
     const details = event.target.closest('summary')?.parentElement;
     const row = details?.closest('.pair-row');
     if (details?.tagName !== 'DETAILS' || !row) return;
@@ -316,7 +358,7 @@ export function createComparisonView(container, chrome) {
       if (left === details) right.open = !details.open;
       if (right === details) left.open = !details.open;
     }
-  });
+  }));
   window.addEventListener('resize', () => scheduleAlignment(true));
   return { reset, show };
 }

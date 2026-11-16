@@ -1,0 +1,114 @@
+:root {
+  color-scheme:light dark;
+  font-family:var(--vscode-font-family,system-ui,sans-serif);
+  color:var(--vscode-editor-foreground,#d8d9dd);
+  background:var(--vscode-editor-background,#151618);
+  --page:var(--vscode-editor-background,#151618);
+  --text:var(--vscode-editor-foreground,#d8d9dd);
+  --heading:var(--text);
+  --strong:var(--text);
+  --muted:var(--vscode-descriptionForeground,#929aa6);
+  --subtle:var(--muted);
+  --border:var(--vscode-panel-border,#454545);
+  --border-strong:var(--vscode-contrastBorder,var(--vscode-focusBorder,#717b8c));
+  --surface:var(--vscode-editorWidget-background,var(--page));
+  --control:var(--vscode-button-secondaryBackground,#303238);
+  --secondary-text:var(--vscode-button-secondaryForeground,var(--text));
+  --hover:var(--vscode-button-secondaryHoverBackground,#454545);
+  --focus:var(--vscode-focusBorder,#007fd4);
+  --pressed:var(--hover);
+  --segment:var(--vscode-button-background,#007fd4);
+  --code:var(--vscode-textCodeBlock-background,var(--surface));
+  --code-border:var(--border);
+  --inline-code:var(--code);
+  --quote:var(--vscode-textBlockQuote-foreground,var(--muted));
+  --quote-border:var(--vscode-textBlockQuote-border,var(--border));
+  --table-border:var(--border);
+  --table-header:var(--surface);
+  --table-alt:transparent;
+  --link:var(--vscode-textLink-foreground,#9bbfe8);
+  --green:var(--vscode-gitDecoration-addedResourceForeground,#81c784);
+  --red:var(--vscode-gitDecoration-deletedResourceForeground,#e57373);
+  --add:var(--vscode-diffEditor-insertedLineBackground,#2ea04320);
+  --remove:var(--vscode-diffEditor-removedLineBackground,#f8514920);
+  --word-add:var(--vscode-diffEditor-insertedTextBackground,#2ea04340);
+  --word-add-text:var(--text);
+  --word-remove:var(--vscode-diffEditor-removedTextBackground,#f8514940);
+  --word-remove-text:var(--text);
+  --add-marker:var(--green);
+  --remove-marker:var(--red);
+  --format:var(--vscode-editorInfo-foreground,var(--text));
+  --source-add:var(--add);
+  --source-remove:var(--remove);
+  --source-word-add:var(--word-add);
+  --source-word-add-text:var(--text);
+  --source-word-remove:var(--word-remove);
+  --source-word-remove-text:var(--text);
+  --number:var(--vscode-editorLineNumber-activeForeground,var(--text));
+  --number-border:var(--border);
+  --notice:var(--vscode-inputValidation-warningBackground,var(--surface));
+  --notice-text:var(--text);
+  --notice-border:var(--vscode-inputValidation-warningBorder,var(--border));
+  --error:var(--vscode-inputValidation-errorBackground,var(--surface));
+  --error-text:var(--text);
+  --error-border:var(--vscode-inputValidation-errorBorder,var(--red));
+}
+body { padding:0; }
+.extension-toolbar {
+  position:sticky;
+  top:0;
+  z-index:10;
+  background:var(--page);
+  border-bottom:1px solid var(--border);
+  padding:12px 20px;
+}
+.comparison-metadata { padding:0 20px; }
+.extension-actions { display:flex; gap:12px; align-items:center; justify-content:space-between; }
+.view-switch { background:var(--surface); border-color:var(--border); }
+.view-switch button { min-height:32px; padding:5px 16px; color:var(--text); }
+.view-switch button[aria-pressed=true] {
+  color:var(--vscode-button-foreground,#fff);
+  background:var(--segment);
+  border-color:var(--border-strong);
+}
+#refresh { min-height:32px; color:var(--secondary-text); }
+.source-label { margin:12px 0 4px; font-size:13px; font-weight:600; overflow-wrap:anywhere; }
+.snapshot-label { margin:0 0 12px; font-size:11px; line-height:1.5; color:var(--muted); }
+.document-labels { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; }
+.document-labels>div { min-width:0; padding-bottom:8px; font-size:12px; overflow-wrap:anywhere; }
+.side-label { display:block; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:3px; }
+.comparison-metadata .comparison-summary { padding:7px 0; flex-direction:row; align-items:flex-start; text-align:left; flex-wrap:wrap; gap:6px 20px; font-size:11px; }
+.image-notice { display:none; font-size:11px; line-height:1.6; color:var(--muted); margin:12px 20px; }
+body:has(.image-placeholder) .image-notice { display:block; }
+.notice { margin:12px 20px; }
+#comparison { padding:16px 0 40px; }
+.document-cell { font-size:var(--vscode-markdown-font-size,14px); padding-inline:24px; }
+.document-cell pre,.document-cell code,.source-cell { font-family:var(--vscode-editor-font-family,ui-monospace,monospace); }
+.source-cell { font-size:var(--vscode-editor-font-size,12px); }
+.image-placeholder { display:inline-block; padding:10px 12px; border:1px dashed var(--border-strong); border-radius:4px; color:var(--muted); background:var(--surface); font-size:12px; }
+.image-placeholder:is([data-change=remove],[data-edit=remove]) { outline:2px solid var(--remove-marker); }
+.image-placeholder:is([data-change=add],[data-edit=add]) { outline:2px solid var(--add-marker); }
+.document-cell a[aria-disabled=true] { color:var(--muted); text-decoration:underline dotted; cursor:default; }
+body.vscode-high-contrast .document-cell [data-edit],body.vscode-high-contrast-light .document-cell [data-edit],
+body.vscode-high-contrast .source-cell [data-edit],body.vscode-high-contrast-light .source-cell [data-edit] { outline:1px solid currentColor; outline-offset:-1px; }
+body.vscode-high-contrast,body.vscode-high-contrast-light {
+  --control:var(--page);
+  --hover:var(--page);
+  --pressed:var(--page);
+  --secondary-text:var(--text);
+}
+body.vscode-high-contrast .view-switch button[aria-pressed=true],body.vscode-high-contrast-light .view-switch button[aria-pressed=true] {
+  color:var(--text);
+  background:var(--page);
+  border:2px solid var(--vscode-contrastActiveBorder,var(--focus));
+  font-weight:600;
+}
+@media(max-width:600px) {
+  .extension-toolbar,.comparison-metadata { padding-inline:12px; }
+  .document-cell { padding-inline:14px; font-size:13px; }
+  .document-cell[data-change-cue]:before { left:4px; }
+  .source-cell { gap:6px; padding-right:8px; font-size:11px; }
+  .source-number { width:max(28px,calc(var(--source-digits,2) * 1ch + 12px)); padding-right:5px; }
+  .source-cell[data-change-cue]>.source-number:before { left:2px; }
+}
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }

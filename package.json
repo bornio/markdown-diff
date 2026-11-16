@@ -8,7 +8,11 @@
     "build": "vite build && node scripts/example-page.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "test": "node --test test/*.test.mjs",
-    "check": "npm test && npm run build && playwright test"
+    "check": "npm test && npm run build && playwright test",
+    "build:vscode": "node scripts/build-vscode.mjs",
+    "package:vscode": "npm run build:vscode && node scripts/package-vscode.mjs",
+    "test:vscode": "node --test test/vscode-host.test.mjs && npm run build:vscode && playwright test --config playwright.vscode.config.mjs",
+    "test:vscode:ide": "node scripts/test-vscode-ide.mjs"
   },
   "dependencies": {
     "diff": "9.0.0",
@@ -19,6 +23,13 @@
   },
   "devDependencies": {
     "@playwright/test": "1.65.0",
+    "@vscode/vsce": "4.1.1",
+    "axe-core": "4.14.0",
     "vite": "7.3.8"
+  },
+  "overrides": {
+    "@vscode/vsce": {
+      "minimatch": "11.0.1"
+    }
   }
 }

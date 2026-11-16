@@ -1,0 +1,410 @@
+{
+  "package": "markdown-diff-vscode-0.1.0.vsix",
+  "package_sha256": "46435e82fb843fa51844eb524315c1aaf28b141068eba1947cef5fa0844860d1",
+  "runtime_sha256": {
+    "extension.cjs": "3e31d40598ec49bf89b4fb40be17934482c6e0441cd3eb474de73c4b04372c2f",
+    "dist/webview.js": "6149836f6312fc6a953263a3e253e718129c488f69772c6f1ff3c62ed2f734c9",
+    "dist/webview.css": "79b9df95067e140ba6bccc74d504e89012d086af3147c7fcc3ede6f61f76514e"
+  },
+  "harness_sha256": {
+    "scripts/test-vscode-ide.mjs": "043f27e861f891ee56878320b5f5f512fc47a9edf69087944c15ebe2cbf1c9b2",
+    "test/vscode-ide/driver.cjs": "d5416e9a999caabb0dadd7a2a59efbd9fa4c2564120bfcf2f147732f2c53c9f1"
+  },
+  "platform": "macOS arm64",
+  "logical_cpu_cores": 10,
+  "checks": {
+    "host_tests": 12,
+    "bundled_browser_tests": 19,
+    "website_node_tests": 80,
+    "website_browser_tests": 31
+  },
+  "matrix": [
+    {
+      "scenario": "installed",
+      "vscode_version": "1.146.0",
+      "trusted": true,
+      "virtual_workspace": false,
+      "completed_checks": [
+        "Editor title action uses the selected diff and includes unsaved text",
+        "Real webview blocks unsafe Markdown and image requests",
+        "Source retains exact formatting syntax",
+        "Refresh updates the fixed pair and snapshots stay fixed before refresh",
+        "Keyboard switches the comparison mode",
+        "Hide/reveal and actual webview reload restore the snapshot and non-default Source mode",
+        "All four native themes and non-default Source mode pass automated WCAG checks",
+        "The installed preview remains usable in a narrow column at 200 percent zoom",
+        "A real DOM presentation fault retains matching content and provenance through a verified webview reload",
+        "Failed comparisons preserve the previous snapshot after webview recreation",
+        "Closing and reopening a comparison creates a working fresh preview",
+        "Real Git working-tree comparison preserves its selected documents",
+        "Real Git staged comparison preserves the index baseline",
+        "A 1200-row table uses rendered pagination",
+        "Five measured 1200-row table refreshes finish correctly with bounded observed UI frame gaps",
+        "Five measured 100-section prose refreshes finish correctly with bounded observed UI frame gaps",
+        "Five measured 50000-line code refreshes finish correctly with bounded observed UI frame gaps",
+        "A provider failure preserves the last successful comparison",
+        "Preview and refresh never write the source file"
+      ],
+      "accessibility_states": [
+        {
+          "name": "source-dark",
+          "viewport": {
+            "width": 786,
+            "height": 802,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "name": "dark",
+          "viewport": {
+            "width": 786,
+            "height": 802,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "name": "light",
+          "viewport": {
+            "width": 786,
+            "height": 802,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "name": "high-contrast",
+          "viewport": {
+            "width": 786,
+            "height": 802,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "name": "high-contrast-light",
+          "viewport": {
+            "width": 786,
+            "height": 802,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "name": "narrow-200-percent",
+          "viewport": {
+            "width": 442,
+            "height": 252,
+            "devicePixelRatio": 4
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "name": "presentation-error-recovery",
+          "viewport": {
+            "width": 1382,
+            "height": 802,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        }
+      ],
+      "measurements": [
+        {
+          "workload": "table",
+          "input": {
+            "tableRows": 1200,
+            "combinedInputBytes": 45875
+          },
+          "trials": 5,
+          "median_ms": 180.1,
+          "range_ms": [
+            171.5,
+            195.6
+          ],
+          "maximum_observed_frame_gap_ms": 19.1,
+          "maximum_observed_long_task_ms": 0,
+          "failures": 0,
+          "profiled_trial_total_ms": 176.3,
+          "profiled_worker_round_trip_ms": 76.6
+        },
+        {
+          "workload": "prose",
+          "input": {
+            "sectionsPerDocument": 100,
+            "combinedInputBytes": 15174
+          },
+          "trials": 5,
+          "median_ms": 263.8,
+          "range_ms": [
+            251.1,
+            279.6
+          ],
+          "maximum_observed_frame_gap_ms": 18.9,
+          "maximum_observed_long_task_ms": 0,
+          "failures": 0,
+          "profiled_trial_total_ms": 259.6,
+          "profiled_worker_round_trip_ms": 39.3
+        },
+        {
+          "workload": "code",
+          "input": {
+            "linesPerDocument": 50000,
+            "combinedInputBytes": 7077821
+          },
+          "trials": 5,
+          "median_ms": 711.7,
+          "range_ms": [
+            683.5,
+            713.5
+          ],
+          "maximum_observed_frame_gap_ms": 46.7,
+          "maximum_observed_long_task_ms": 0,
+          "failures": 0,
+          "profiled_trial_total_ms": 709.2,
+          "profiled_worker_round_trip_ms": 532.5
+        }
+      ],
+      "tested_at": "2026-11-15T23:02:48.216Z"
+    },
+    {
+      "scenario": "minimum",
+      "vscode_version": "1.85.0",
+      "trusted": true,
+      "virtual_workspace": false,
+      "completed_checks": [
+        "Editor title action uses the selected diff and includes unsaved text",
+        "Real webview blocks unsafe Markdown and image requests",
+        "Source retains exact formatting syntax",
+        "Refresh updates the fixed pair and snapshots stay fixed before refresh",
+        "Keyboard switches the comparison mode",
+        "Hide/reveal and actual webview reload restore the snapshot and non-default Source mode",
+        "All four native themes and non-default Source mode pass automated WCAG checks",
+        "The installed preview remains usable in a narrow column at 200 percent zoom",
+        "A real DOM presentation fault retains matching content and provenance through a verified webview reload",
+        "Failed comparisons preserve the previous snapshot after webview recreation",
+        "Closing and reopening a comparison creates a working fresh preview",
+        "Real Git working-tree comparison preserves its selected documents",
+        "Real Git staged comparison preserves the index baseline",
+        "A 1200-row table uses rendered pagination",
+        "Five measured 1200-row table refreshes finish correctly with bounded observed UI frame gaps",
+        "Five measured 100-section prose refreshes finish correctly with bounded observed UI frame gaps",
+        "Five measured 50000-line code refreshes finish correctly with bounded observed UI frame gaps",
+        "A provider failure preserves the last successful comparison",
+        "Preview and refresh never write the source file"
+      ],
+      "accessibility_states": [
+        {
+          "name": "source-dark",
+          "viewport": {
+            "width": 720,
+            "height": 683,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "name": "dark",
+          "viewport": {
+            "width": 720,
+            "height": 683,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "name": "light",
+          "viewport": {
+            "width": 720,
+            "height": 683,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "name": "high-contrast",
+          "viewport": {
+            "width": 720,
+            "height": 683,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "name": "high-contrast-light",
+          "viewport": {
+            "width": 720,
+            "height": 683,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "name": "narrow-200-percent",
+          "viewport": {
+            "width": 452,
+            "height": 265,
+            "devicePixelRatio": 4
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        },
+        {
+          "name": "presentation-error-recovery",
+          "viewport": {
+            "width": 1392,
+            "height": 815,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        }
+      ],
+      "measurements": [
+        {
+          "workload": "table",
+          "input": {
+            "tableRows": 1200,
+            "combinedInputBytes": 45875
+          },
+          "trials": 5,
+          "median_ms": 227.7,
+          "range_ms": [
+            218.7,
+            232.2
+          ],
+          "maximum_observed_frame_gap_ms": 24.7,
+          "maximum_observed_long_task_ms": 0,
+          "failures": 0,
+          "profiled_trial_total_ms": 215.4,
+          "profiled_worker_round_trip_ms": 115.3
+        },
+        {
+          "workload": "prose",
+          "input": {
+            "sectionsPerDocument": 100,
+            "combinedInputBytes": 15174
+          },
+          "trials": 5,
+          "median_ms": 266.9,
+          "range_ms": [
+            261.8,
+            269.3
+          ],
+          "maximum_observed_frame_gap_ms": 23,
+          "maximum_observed_long_task_ms": 0,
+          "failures": 0,
+          "profiled_trial_total_ms": 252.5,
+          "profiled_worker_round_trip_ms": 41.7
+        },
+        {
+          "workload": "code",
+          "input": {
+            "linesPerDocument": 50000,
+            "combinedInputBytes": 7077821
+          },
+          "trials": 5,
+          "median_ms": 1098.7,
+          "range_ms": [
+            1079.1,
+            1114.7
+          ],
+          "maximum_observed_frame_gap_ms": 96.3,
+          "maximum_observed_long_task_ms": 82,
+          "failures": 0,
+          "profiled_trial_total_ms": 1075.5,
+          "profiled_worker_round_trip_ms": 820.4
+        }
+      ],
+      "tested_at": "2026-11-15T23:04:46.449Z"
+    },
+    {
+      "scenario": "restricted",
+      "vscode_version": "1.146.0",
+      "trusted": false,
+      "virtual_workspace": false,
+      "completed_checks": [
+        "Editor title action uses the selected diff and includes unsaved text",
+        "Real webview blocks unsafe Markdown and image requests",
+        "Source retains exact formatting syntax",
+        "The installed extension works in actual Restricted Mode"
+      ],
+      "accessibility_states": [
+        {
+          "name": "restricted-source",
+          "viewport": {
+            "width": 786,
+            "height": 802,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        }
+      ],
+      "measurements": [],
+      "tested_at": "2026-11-15T23:09:08.381Z"
+    },
+    {
+      "scenario": "virtual",
+      "vscode_version": "1.146.0",
+      "trusted": true,
+      "virtual_workspace": true,
+      "completed_checks": [
+        "Title action renders the selected documents in a virtual workspace",
+        "Real webview blocks unsafe Markdown and image requests",
+        "Source retains exact formatting syntax",
+        "The installed extension works in an actual virtual workspace"
+      ],
+      "accessibility_states": [
+        {
+          "name": "virtual-source",
+          "viewport": {
+            "width": 786,
+            "height": 802,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
+        }
+      ],
+      "measurements": [],
+      "tested_at": "2026-11-15T23:09:14.711Z"
+    }
+  ],
+  "limits": [
+    "One host and desktop platform.",
+    "No manual screen-reader study.",
+    "Initial mounting and warm cached inputs, not complete page traversal.",
+    "Peak memory and every external document provider remain unmeasured.",
+    "No speedup or user percentile claim."
+  ]
+}
