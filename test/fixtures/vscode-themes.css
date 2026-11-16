@@ -39,6 +39,7 @@
   --vscode-diffEditor-removedTextBackground:initial;
 }
 :root[data-vscode-theme-id="Abyss"] {
+  --vscode-inputValidation-warningBackground:#5b7e7a;
   --vscode-foreground:#cccccc;
   --vscode-editor-foreground:#6688cc;
   --vscode-editor-background:#000c18;

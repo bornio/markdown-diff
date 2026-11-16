@@ -462,6 +462,7 @@ async function verify() {
     assert.deepEqual(contrast.failures, [], `Text contrast in ${theme.id}: ${JSON.stringify(contrast.failures)}`);
     const name = theme.id.replace(/[^a-z0-9]+/gi, '-');
     await frame.locator('.document-cell pre').first().screenshot({ path: path.join(output, `${name}-code.png`) });
+    await page.screenshot({ path: path.join(output, `${name}.png`) });
     await audit(frame, theme.id);
   }
   await request({ op: 'theme', name: themes.find(theme => theme.uiTheme === 'hc-light').id });

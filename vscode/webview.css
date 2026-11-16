@@ -37,11 +37,11 @@
   --add-marker:var(--green);
   --remove-marker:var(--red);
   --format:var(--vscode-editorInfo-foreground,var(--text));
-  --notice:var(--vscode-inputValidation-warningBackground,var(--surface));
-  --notice-text:var(--vscode-inputValidation-warningForeground,var(--text));
+  --notice:var(--surface);
+  --notice-text:var(--text);
   --notice-border:var(--vscode-inputValidation-warningBorder,var(--border));
-  --error:var(--vscode-inputValidation-errorBackground,var(--surface));
-  --error-text:var(--vscode-inputValidation-errorForeground,var(--text));
+  --error:var(--surface);
+  --error-text:var(--text);
   --error-border:var(--vscode-inputValidation-errorBorder,var(--red));
 }
 :root:has(body.vscode-light) { --text:color-mix(in srgb,var(--vscode-foreground,#616161) 80%,#000); }
