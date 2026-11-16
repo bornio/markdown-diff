@@ -62,6 +62,22 @@
   --vscode-diffEditor-insertedTextBackground:rgba(49,149,138,.33);
   --vscode-diffEditor-removedTextBackground:rgba(137,47,70,.53);
 }
+:root[data-vscode-theme-id="Monokai Dimmed"] {
+  --vscode-foreground:#cccccc;
+  --vscode-editor-foreground:#c5c8c6;
+  --vscode-editor-background:#1e1e1e;
+  --vscode-focusBorder:#3655b5;
+  --vscode-descriptionForeground:rgba(204,204,204,.7);
+  --vscode-editorWidget-background:#252526;
+  --vscode-button-secondaryForeground:#cccccc;
+  --vscode-button-secondaryBackground:#444444;
+  --vscode-checkbox-background:#525252;
+  --vscode-checkbox-foreground:#f0f0f0;
+  --vscode-textCodeBlock-background:rgba(10,10,10,.4);
+  --vscode-textLink-foreground:#3794ff;
+  --vscode-gitDecoration-addedResourceForeground:#81b88b;
+  --vscode-gitDecoration-deletedResourceForeground:#c74e39;
+}
 body {
   color:var(--vscode-editor-foreground);
   background-color:var(--vscode-editor-background);

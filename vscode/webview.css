@@ -53,6 +53,7 @@
   --focus:color-mix(in srgb,var(--vscode-focusBorder,#007fd4) 80%,#000);
 }
 :root:has(body.vscode-high-contrast,body.vscode-high-contrast-light) { --muted:var(--ink); }
+:root:has(body.vscode-dark) { --focus:color-mix(in srgb,var(--vscode-focusBorder,#007fd4) 80%,#fff); }
 body { padding:0; color:var(--text); }
 .extension-toolbar {
   position:sticky;
