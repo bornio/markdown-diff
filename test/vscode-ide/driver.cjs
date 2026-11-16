@@ -160,7 +160,7 @@ exports.run = async function () {
       const title = `Markdown Diff · ${pair.title}`;
       const locate = () => vscode.window.tabGroups.all.filter(group => group.tabs.some(tab => tab.input instanceof vscode.TabInputWebview && tab.label === title));
       const deadline = Date.now() + 10000;
-      while (!locate().includes(target) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+      while ((!locate().includes(target) || locate().length !== 1) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
       return { targetInitiallySecond, previewInTargetGroup: locate().includes(target), matchingPreviews: locate().length, finalColumns: locate().map(group => group.viewColumn) };
     }
     if (request.op === 'join-groups') {
