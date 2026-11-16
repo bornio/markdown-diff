@@ -1,13 +1,13 @@
 :root {
   color-scheme:light dark;
   font-family:var(--vscode-font-family,system-ui,sans-serif);
-  color:var(--vscode-editor-foreground,#d8d9dd);
+  color:var(--text);
   background:var(--vscode-editor-background,#151618);
   --page:var(--vscode-editor-background,#151618);
-  --text:var(--vscode-editor-foreground,#d8d9dd);
+  --text:var(--vscode-foreground,var(--vscode-editor-foreground,#d8d9dd));
   --heading:var(--text);
   --strong:var(--text);
-  --muted:var(--vscode-descriptionForeground,#929aa6);
+  --muted:var(--text);
   --subtle:var(--muted);
   --border:var(--vscode-panel-border,#454545);
   --border-strong:var(--vscode-contrastBorder,var(--vscode-focusBorder,#717b8c));
@@ -20,7 +20,7 @@
   --code:var(--vscode-textCodeBlock-background,var(--surface));
   --code-border:var(--border);
   --inline-code:var(--code);
-  --quote:var(--vscode-textBlockQuote-foreground,var(--muted));
+  --quote:var(--text);
   --quote-border:var(--vscode-textBlockQuote-border,var(--border));
   --table-border:var(--border);
   --table-header:var(--surface);
@@ -38,13 +38,14 @@
   --remove-marker:var(--red);
   --format:var(--vscode-editorInfo-foreground,var(--text));
   --notice:var(--vscode-inputValidation-warningBackground,var(--surface));
-  --notice-text:var(--text);
+  --notice-text:var(--vscode-inputValidation-warningForeground,var(--text));
   --notice-border:var(--vscode-inputValidation-warningBorder,var(--border));
   --error:var(--vscode-inputValidation-errorBackground,var(--surface));
-  --error-text:var(--text);
+  --error-text:var(--vscode-inputValidation-errorForeground,var(--text));
   --error-border:var(--vscode-inputValidation-errorBorder,var(--red));
 }
-body { padding:0; }
+:root:has(body.vscode-light) { --text:color-mix(in srgb,var(--vscode-foreground,#616161) 80%,#000); }
+body { padding:0; color:var(--text); }
 .extension-toolbar {
   position:sticky;
   top:0;
@@ -56,6 +57,7 @@ body { padding:0; }
 .comparison-metadata { padding:0 20px; }
 .extension-actions { display:flex; gap:12px; align-items:center; justify-content:space-between; }
 .extension-actions button { min-height:32px; color:var(--secondary-text); }
+.table-pager button { color:var(--secondary-text); }
 .source-label { margin:8px 0 4px; font-size:13px; font-weight:600; overflow-wrap:anywhere; }
 .snapshot-label,.source-status { margin:0 0 8px; font-size:11px; line-height:1.5; color:var(--muted); }
 .document-labels { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; }
@@ -66,7 +68,7 @@ body { padding:0; }
 #comparison { padding:8px 0 40px; }
 .document-cell { font-size:var(--vscode-markdown-font-size,14px); padding-inline:24px; }
 .document-cell h1 { font-size:2em; padding-bottom:8px; }
-.document-cell pre,.document-cell code { font-family:var(--vscode-editor-font-family,ui-monospace,monospace); }
+.document-cell pre,.document-cell code { font-family:var(--vscode-editor-font-family,ui-monospace,monospace); color:var(--text); }
 .image-placeholder { display:inline-block; padding:10px 12px; border:1px dashed var(--border-strong); border-radius:4px; color:var(--muted); background:var(--surface); font-size:12px; }
 .image-placeholder:is([data-change=remove],[data-edit=remove]) { outline:2px solid var(--remove-marker); }
 .image-placeholder:is([data-change=add],[data-edit=add]) { outline:2px solid var(--add-marker); }

@@ -65,6 +65,11 @@ function stopWorker() {
 function renderDocument(html) {
   const template = document.createElement('template');
   template.innerHTML = html;
+  for (const checkbox of template.content.querySelectorAll('input[type=checkbox]')) {
+    let label = '';
+    for (let sibling = checkbox.nextSibling; sibling && sibling.nodeName !== 'UL' && sibling.nodeName !== 'OL'; sibling = sibling.nextSibling) label += sibling.textContent;
+    checkbox.setAttribute('aria-label', label.replace(/\s+/g, ' ').trim() || 'Task item');
+  }
   for (const image of template.content.querySelectorAll('img')) {
     const placeholder = document.createElement('span');
     placeholder.className = 'image-placeholder';
