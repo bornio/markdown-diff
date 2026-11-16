@@ -11,7 +11,7 @@
     "check": "npm test && npm run build && playwright test",
     "build:vscode": "node scripts/build-vscode.mjs",
     "package:vscode": "npm run build:vscode && node scripts/package-vscode.mjs",
-    "test:vscode": "node --test test/vscode-host.test.mjs && npm run build:vscode && playwright test --config playwright.vscode.config.mjs",
+    "test:vscode": "node --test test/vscode-host.test.mjs test/vscode-preview-limits.test.mjs && npm run build:vscode && playwright test --config playwright.vscode.config.mjs",
     "test:vscode:ide": "node scripts/test-vscode-ide.mjs"
   },
   "dependencies": {

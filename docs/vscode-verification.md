@@ -31,6 +31,8 @@ The host retains the last current input confirmed after presentation. A narrowly
 
 Selection and navigation remain available over loaded content. No rows are unloaded while scrolling. The extension groups Rendered rows into blocks of 64 and observes those blocks, reducing the number of boxes involved in offscreen layout work. The website's default row path and Source mode stay unchanged.
 
+Hidden previews use VS Code's default lifecycle so their DOM can be released; bookmarks also cover explicit webview reloads, which keeping hidden previews alive would not avoid.
+
 Before a saved Rendered anchor, the existing 8 ms / 32,768-character budget governs each construction batch instead of an additional 12-row ceiling. The look-ahead and normal scrolling retain their row caps. No restore pass was added and the 3-pixel acceptance threshold was not relaxed.
 
 This reduces measured cost; it is not constant-depth rendering. DOM, heap and prefix reconstruction still grow with content. A long active selection can require rendering its full span. The native Source action avoids Source DOM entirely, while Source-to-preview returns still recompute and rebuild the captured view. Refresh deliberately starts a new view.
