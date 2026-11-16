@@ -53,19 +53,23 @@ exports.run = async function () {
     assert(await vscode.workspace.applyEdit(edit), 'The test edit must reach the native document.');
   }
 
-  async function render(original, modified, title, invoke = true, column = vscode.ViewColumn.One) {
+  async function render(original, modified, title, invoke = true, column = vscode.ViewColumn.One, preview = false) {
     currentPair = { original, modified, title };
-    await vscode.commands.executeCommand('vscode.diff', original, modified, title, { viewColumn: column, preview: false });
-    assert(vscode.window.tabGroups.activeTabGroup.activeTab.input instanceof vscode.TabInputTextDiff);
+    await vscode.commands.executeCommand('vscode.diff', original, modified, title, { viewColumn: column, preview });
+    const selected = vscode.window.tabGroups.activeTabGroup.activeTab;
+    assert(selected.input instanceof vscode.TabInputTextDiff);
+    const wasPreview = selected.isPreview;
     if (invoke) await vscode.commands.executeCommand(command);
     const documents = await Promise.all([original, modified].map(uri => vscode.workspace.openTextDocument(uri)));
-    return documents.map(document => ({ uri: document.uri.toString(), text: document.getText(), dirty: document.isDirty }));
+    return documents.map(document => ({ uri: document.uri.toString(), text: document.getText(), dirty: document.isDirty, preview: wasPreview }));
   }
 
   async function act(request) {
     if (request.op === 'activation-status') return extension.isActive;
     if (request.op === 'active-label') return vscode.window.tabGroups.activeTabGroup.activeTab.label;
     if (request.op === 'active-diff') {
+      const deadline = Date.now() + 10000;
+      while (!(vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTextDiff) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
       const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
       assert(input instanceof vscode.TabInputTextDiff);
       const documents = await Promise.all([input.original, input.modified].map(uri => vscode.workspace.openTextDocument(uri)));
@@ -193,6 +197,13 @@ exports.run = async function () {
       await render(vscode.Uri.file(path.join(root, 'workspace', 'large-before.md')), vscode.Uri.file(path.join(root, 'workspace', 'large-after.md')), 'Large Markdown acceptance');
       return { tableRows: count, combinedInputBytes: Buffer.byteLength(before) + Buffer.byteLength(after) };
     }
+    if (request.op === 'preview-diff') {
+      const original = vscode.Uri.file(path.join(root, 'workspace', 'preview-before.md'));
+      const modified = vscode.Uri.file(path.join(root, 'workspace', 'preview-after.md'));
+      await fs.writeFile(original.fsPath, '# Preview original\n');
+      await fs.writeFile(modified.fsPath, '# Preview changed\n');
+      return render(original, modified, 'Preview-mode Markdown acceptance', true, vscode.ViewColumn.One, true);
+    }
     if (request.op === 'reading-state') {
       const before = Array.from({ length: 900 }, (_, i) => `Paragraph ${i + 1} holds the reading position.\n`).join('\n');
       const after = before.replace('Paragraph 750 holds', 'Paragraph 750 changed');
@@ -222,11 +233,6 @@ exports.run = async function () {
       await fs.writeFile(path.join(root, 'workspace', 'code-after.md'), after);
       await render(vscode.Uri.file(path.join(root, 'workspace', 'code-before.md')), vscode.Uri.file(path.join(root, 'workspace', 'code-after.md')), 'Large code acceptance');
       return { linesPerDocument: 50_000, combinedInputBytes: Buffer.byteLength(before) + Buffer.byteLength(after) };
-    }
-    if (request.op === 'plain') {
-      await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(root, 'workspace', 'before.md'))));
-      await vscode.commands.executeCommand(command);
-      return vscode.window.tabGroups.activeTabGroup.activeTab.label;
     }
     if (request.op === 'finish') {
       provider.dispose();

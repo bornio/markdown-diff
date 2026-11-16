@@ -19,11 +19,13 @@ test('preview limits reject a large unpaginated paragraph and dense markup befor
   }
 });
 
-test('ordinary wide tables and exact admitted Source remain available', () => {
+test('ordinary wide tables keep the engine output without unused Source payload', () => {
   const text = '| ' + Array.from({ length: 20 }, (_, i) => `Column ${i}`).join(' | ') + ' |\n| ' + Array(20).fill('---').join(' | ') + ' |\n' + Array.from({ length: 80 }, (_, i) => '| ' + Array.from({ length: 20 }, (_, j) => `${i},${j}`).join(' | ') + ' |').join('\n');
   const result = compare(text);
   assert.equal(result.status, 'ready');
-  assert.deepEqual(result.comparison, compareMarkdown(text, text));
+  const { source, ...rendered } = compareMarkdown(text, text);
+  assert.equal(Object.hasOwn(result.comparison, 'source'), false);
+  assert.deepEqual(result.comparison, rendered);
 });
 
 test('large code is limited per page without limiting the whole paginated result', () => {
@@ -31,7 +33,7 @@ test('large code is limited per page without limiting the whole paginated result
   const result = compare(text);
   assert.equal(result.status, 'ready');
   assert.ok(result.comparison.rows.some(row => row.pages?.length > 1));
-  assert.equal(result.comparison.source.rows.length, 50002);
+  assert.equal(Object.hasOwn(result.comparison, 'source'), false);
 });
 
 test('the website worker has unchanged output when no preview policy is supplied', () => {
@@ -47,11 +49,20 @@ test('invalid supplied preview limits are rejected at the worker boundary', () =
   }
 });
 
-test('an oversized Source line is rejected even when its rendered code has bounded pages', () => {
+test('a long code line remains available through bounded rendered pages', () => {
   const text = '```\n' + 'x'.repeat(150000) + '\n```';
   assert.ok(compareMarkdown(text, text).rows[0].pages.length > 1);
   const result = compare(text);
-  assert.equal(result.status, 'error');
-  assert.match(result.message, /native source comparison/);
-  assert.equal(result.comparison, undefined);
+  assert.equal(result.status, 'ready');
+  assert.ok(result.comparison.rows[0].pages.length > 1);
+  assert.equal(Object.hasOwn(result.comparison, 'source'), false);
+});
+
+test('unused inline-image Source does not reject a small sanitized rendered comparison', () => {
+  const text = '# Inline asset\n\n![logo](data:image/png;base64,' + 'A'.repeat(140000) + ')\n\noriginal\n';
+  const result = compare(text, text.replace('original', 'changed'));
+  assert.equal(result.status, 'ready');
+  assert.ok(result.comparison.rows.some(row => row.before.includes('logo')));
+  assert.equal(Object.hasOwn(result.comparison, 'source'), false);
+  assert.doesNotMatch(JSON.stringify(result.comparison), /A{100}/);
 });

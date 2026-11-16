@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { chromium, test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { document, extensionHost } from './helpers/vscode-host.mjs';
 
@@ -479,6 +479,7 @@ test('a newer capture cancels an in-progress deep bookmark restoration', async (
     new MutationObserver((_, observer) => {
       if (!document.querySelector('.pair-row')) return;
       observer.disconnect();
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'state', captureId: 2, status: 'reading', sourceLabel: 'Newer comparison' } }));
       window.supersedeRestore();
     }).observe(document, { childList: true, subtree: true });
   });
@@ -616,7 +617,7 @@ test('a rendered row bookmark beyond the initial batch survives preview reload',
   const visible = await page.evaluate(() => {
     const y = document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2;
     const row = document.elementFromPoint(innerWidth / 4, y).closest('.pair-row');
-    return { index: [...row.parentElement.children].indexOf(row), text: row.textContent, offset: y - row.getBoundingClientRect().top };
+    return { index: [...document.querySelectorAll('.pair-row')].indexOf(row), text: row.textContent, offset: y - row.getBoundingClientRect().top };
   });
   await page.reload();
   await expect(page.locator('#status')).toHaveText('Comparison ready');
@@ -624,4 +625,119 @@ test('a rendered row bookmark beyond the initial batch survives preview reload',
   await expect(restored).toHaveText(visible.text);
   const offset = await restored.evaluate(row => document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2 - row.getBoundingClientRect().top);
   expect(Math.abs(offset - visible.offset), JSON.stringify({ visible, offset })).toBeLessThan(3);
+});
+
+for (const rowIndex of [64, 70]) test(`a chunk placement fault at row ${rowIndex} preserves the confirmed snapshot`, async ({ page }) => {
+  const { refresh } = await openPreview(page, ['# Last original', '# Last changed']);
+  const timestamp = await page.locator('#snapshot-label').textContent();
+  await page.evaluate(rowIndex => {
+    const append = Element.prototype.append;
+    Element.prototype.append = function (...children) {
+      if (this.classList.contains('row-chunk') && children.some(child => child.comparisonRow === rowIndex)) {
+        Element.prototype.append = append;
+        throw new Error('Injected retained-chunk placement fault');
+      }
+      return append.apply(this, children);
+    };
+  }, rowIndex);
+  const text = Array.from({ length: 200 }, (_, i) => `Candidate paragraph ${i}`).join('\n\n');
+  await refresh([text, text.replace('paragraph 150', 'changed paragraph 150')]);
+  await expect(page.locator('#notice')).toContainText('Injected retained-chunk placement fault');
+  await expect(page.locator('#comparison')).toContainText('Last changed');
+  await expect(page.locator('#snapshot-label')).toHaveText(timestamp);
+  expect(await page.evaluate(() => window.messages.some(message => message.type === 'comparisonRendered' && message.captureId === 2))).toBe(false);
+  await page.getByRole('button', { name: 'Open live Source diff', exact: true }).click();
+  await expect(page.locator('#comparison')).toContainText('Last changed');
+  await page.reload();
+  await expect(page.locator('#comparison')).toContainText('Last changed');
+  await expect(page.locator('#snapshot-label')).toHaveText(timestamp);
+});
+
+
+for (const targetRow of [191, 192, 220]) test(`mixed restore preserves a prior nonzero page and logical anchor ${targetRow}`, async ({ page }) => {
+  const first = Array.from({ length: 50 }, (_, i) => `Before list paragraph ${i}.`).join('\n\n');
+  const list = Array.from({ length: 230 }, (_, i) => `- Paged item ${i + 1}`).join('\n');
+  const tail = Array.from({ length: 300 }, (_, i) => i % 17 === 0 ? `## Tail heading ${i}\n\nTail paragraph ${i} with **emphasis**.` : `Tail paragraph ${i}.`).join('\n\n');
+  const text = `${first}\n\n${list}\n\n${tail}`;
+  await openPreview(page, [text, text.replace('paragraph 299', 'changed paragraph 299')]);
+  for (let turn = 0; turn < 2; turn++) await page.getByRole('button', { name: 'Next', exact: true }).first().click();
+  await expect(page.locator('.table-pager [role=status]')).toContainText('Rows 201');
+  await expect.poll(() => page.evaluate(() => window.saved?.view?.rendered?.pages.find(([row]) => row === 50)?.[1])).toBe(2);
+  while (await page.locator('.pair-row').count() < targetRow + 3) {
+    const count = await page.locator('.pair-row').count();
+    await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+    await expect.poll(() => page.locator('.pair-row').count()).toBeGreaterThan(count);
+  }
+  const expectedText = await page.locator('.pair-row').nth(targetRow).textContent();
+  const bookmark = await page.evaluate(row => {
+    const saved = structuredClone(window.saved);
+    saved.view.rendered.anchor = { row, offset: 5 - document.querySelector('.extension-toolbar').getBoundingClientRect().bottom };
+    sessionStorage.setItem('preview-next-state', JSON.stringify(saved));
+    return saved.view.rendered.anchor;
+  }, targetRow);
+  await page.reload();
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  await expect(page.locator('.table-pager [role=status]')).toContainText('Rows 201');
+  const restored = page.locator('.pair-row').nth(targetRow);
+  await expect(restored).toHaveText(expectedText);
+  const delta = await restored.evaluate((row, offset) => row.getBoundingClientRect().top + offset, bookmark.offset);
+  expect(Math.abs(delta)).toBeLessThan(3);
+});
+
+
+test('large inline-image source is admitted when its rendered placeholder is small', async ({ page }) => {
+  const text = '# Inline asset\n\n![logo](data:image/png;base64,' + 'A'.repeat(140000) + ')\n\noriginal\n';
+  const requests = [];
+  page.on('request', request => { if (request.url().startsWith('data:')) requests.push(request.url()); });
+  await openPreview(page, [text, text.replace('original', 'changed')]);
+  await expect(page.locator('.image-placeholder')).toHaveCount(2);
+  await expect(page.locator('#comparison img')).toHaveCount(0);
+  await expect(page.locator('#comparison')).toContainText('changed');
+  expect(requests).toEqual([]);
+});
+
+test('long selection and native keyboard and accessibility reach survive scrolling away', async () => {
+  const browser = await chromium.launch({ channel: 'chrome', args: ['--force-renderer-accessibility'] });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  try {
+    const text = Array.from({ length: 900 }, (_, i) => i === 0 ? '[First target](https://example.test/first)' : i === 640 ? '[Far target](https://example.test/far)' : `Résumé paragraph ${i}. 同じ`).join('\n\n');
+    await openPreview(page, [text, text.replace('paragraph 850', 'changed paragraph 850')]);
+    while (await page.locator('.pair-row').count() < 900) {
+      const count = await page.locator('.pair-row').count();
+      await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+      await expect.poll(() => page.locator('.pair-row').count()).toBeGreaterThan(count);
+    }
+    for (let row = 0; row < 900; row += 8) await page.locator('.pair-row').nth(row).scrollIntoViewIfNeeded();
+    await page.locator('.pair-row').nth(800).scrollIntoViewIfNeeded();
+    const session = await page.context().newCDPSession(page);
+    await session.send('Accessibility.enable');
+    const { nodes } = await session.send('Accessibility.getFullAXTree');
+    await session.detach();
+    const labels = nodes.filter(node => !node.ignored).map(node => node.name?.value);
+    for (let row = 1; row < 900; row++) if (row !== 640 && row !== 850) expect(labels).toContain(`Résumé paragraph ${row}. 同じ`);
+    const first = page.locator('.document-cell[data-side=before] a[href="https://example.test/first"]');
+    const second = page.locator('.document-cell[data-side=after] a[href="https://example.test/first"]');
+    const far = page.locator('.document-cell[data-side=before] a[href="https://example.test/far"]');
+    await first.focus();
+    await page.keyboard.press('Tab');
+    await expect(second).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(far).toBeFocused();
+    await expect(far).toBeInViewport();
+    await page.keyboard.press('Shift+Tab');
+    await expect(second).toBeFocused();
+    const selection = await page.evaluate(() => {
+      const rows = document.querySelectorAll('.pair-row');
+      const range = document.createRange();
+      range.setStartBefore(rows[0]); range.setEndAfter(rows[640]);
+      getSelection().removeAllRanges(); getSelection().addRange(range);
+      return getSelection().toString();
+    });
+    for (let row = 1; row < 640; row++) expect(selection).toContain(`Résumé paragraph ${row}. 同じ`);
+    await page.locator('.pair-row').nth(800).scrollIntoViewIfNeeded();
+    expect(await page.evaluate(() => getSelection().toString())).toBe(selection);
+    await page.locator('#comparison').focus();
+    await page.keyboard.press('ControlOrMeta+A');
+    expect(await page.evaluate(() => getSelection().toString())).toContain('Résumé paragraph 899. 同じ');
+  } finally { await browser.close(); }
 });

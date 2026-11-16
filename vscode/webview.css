@@ -84,3 +84,6 @@ body.vscode-high-contrast,body.vscode-high-contrast-light {
   .document-cell[data-change-cue]:before { left:4px; }
 }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
+
+.row-chunk { content-visibility:auto; }
+.row-chunk > .pair-row { content-visibility:visible; contain:layout style paint; }

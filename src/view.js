@@ -1,7 +1,7 @@
 import { partners } from './partners.js';
 import { presentTables } from './tables.js';
 
-export function createComparisonView(container, chrome, { renderDocument, onRendered, onError, batchLimits } = {}) {
+export function createComparisonView(container, chrome, { renderDocument, onRendered, onError, batchLimits, chunkRows = 0 } = {}) {
   let comparison = null;
   let names = null;
   let current = null;
@@ -9,8 +9,8 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
   let resetSizes = false;
   let bookmarks = {};
   const views = new Map();
-  const nearRows = new Set();
-  const activeRows = new Set();
+  const nearTargets = new Set();
+  const activeTargets = new Set();
   const measuredHeights = new WeakMap();
 
   function attempt(action) {
@@ -25,7 +25,7 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       cancelAnimationFrame(alignmentFrame);
       alignmentFrame = 0;
       incremental.disconnect();
-      activeRows.clear();
+      activeTargets.clear();
       current = null;
       onError(error);
     }
@@ -37,7 +37,7 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
     node.style.containIntrinsicBlockSize = `auto ${height}px`;
   }
 
-  function snapshotRows(rows) {
+  function snapshotHeights(rows) {
     const sizes = [...rows].filter((node) => node.isConnected && current?.root.contains(node))
       .map((node) => [node, node.getBoundingClientRect().height]);
     for (const [node, height] of sizes) recordHeight(node, height);
@@ -55,13 +55,13 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
   const visible = new IntersectionObserver((entries) => {
     let entering = false;
     for (const entry of entries) {
-      if (entry.isIntersecting && entry.target.isConnected) nearRows.add(entry.target);
-      else nearRows.delete(entry.target);
+      if (entry.isIntersecting && entry.target.isConnected) nearTargets.add(entry.target);
+      else nearTargets.delete(entry.target);
       if (current && entry.isIntersecting && entry.target.isConnected && current.root.contains(entry.target)) {
-        entering ||= !activeRows.has(entry.target);
-        activeRows.add(entry.target);
+        entering ||= !activeTargets.has(entry.target);
+        activeTargets.add(entry.target);
       } else {
-        activeRows.delete(entry.target);
+        activeTargets.delete(entry.target);
       }
     }
     scheduleAlignment(entering);
@@ -208,8 +208,7 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       node.append(pager);
     }
     fill();
-    visible.observe(node);
-    resized.observe(node);
+    if (!view.chunkSize) { visible.observe(node); resized.observe(node); }
     return node;
   }
 
@@ -221,7 +220,7 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
     const rows = mode === 'source' ? comparison.source.rows : comparison.rows;
     if (mode === 'source') root.style.setProperty('--source-digits', String(String(rows.length || 1).length));
     const bookmark = bookmarks[mode];
-    const view = { mode, root, more, rows, pages: new Map(bookmark?.pages), restore: bookmark?.anchor ? { ...bookmark.anchor, passes: 0 } : null, position: 0, end: 0, scroll: 0, frame: 0, readyFrame: 0, mounted: false };
+    const view = { mode, root, more, rows, chunkSize: mode === 'rendered' ? chunkRows : 0, tail: null, pages: new Map(bookmark?.pages), restore: bookmark?.anchor ? { ...bookmark.anchor, passes: 0 } : null, position: 0, end: 0, scroll: 0, frame: 0, readyFrame: 0, mounted: false };
     views.set(mode, view);
     return view;
   }
@@ -231,7 +230,7 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       view.frame = 0;
       if (view !== current) return;
       const source = view.mode === 'source';
-      const stop = Math.min(view.position + (source ? 80 : 12), view.end);
+      const stop = Math.min(view.restore && batchLimits && !source ? Math.max(view.position + 12, view.restore.row) : view.position + (source ? 80 : 12), view.end);
       const fragment = document.createDocumentFragment();
       const started = batchLimits ? performance.now() : 0;
       let characters = 0;
@@ -242,6 +241,17 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
         if (batchLimits && fragment.childNodes.length && (characters + cost > batchLimits.characters || performance.now() - started >= batchLimits.milliseconds)) break;
         fragment.append(buildRow(row, source, view.position++, view));
         characters += cost;
+      }
+      if (view.chunkSize) for (const node of [...fragment.childNodes]) {
+        if (node.comparisonRow % view.chunkSize === 0) {
+          view.tail = document.createElement('div');
+          view.tail.className = 'row-chunk';
+          view.tail.style.containIntrinsicBlockSize = `auto ${Math.min(view.chunkSize, view.rows.length - node.comparisonRow) * 100}px`;
+          visible.observe(view.tail);
+          resized.observe(view.tail);
+          fragment.append(view.tail);
+        }
+        view.tail.append(node);
       }
       view.root.append(fragment);
       if (view.position < view.end) view.frame = requestAnimationFrame(() => step(view));
@@ -264,7 +274,7 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
         if (alignmentFrame) { notifyMounted(view); return; }
         if (view.restore) {
           const anchor = view.restore;
-          const row = view.root.children[anchor.row];
+          const row = view.chunkSize ? view.root.children[Math.floor(anchor.row / view.chunkSize)]?.children[anchor.row % view.chunkSize] : view.root.children[anchor.row];
           const offset = row ? Math.min(anchor.offset, Math.max(0, row.getBoundingClientRect().height - 1)) : 0;
           const delta = row ? row.getBoundingClientRect().top + offset : 0;
           if (row && Math.abs(delta) > 1 && anchor.passes++ < 4) {
@@ -294,7 +304,7 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
 
   function pause() {
     if (current) bookmarks = getState();
-    snapshotRows(activeRows);
+    snapshotHeights(activeTargets);
     if (current) {
       current.scroll = window.scrollY;
       cancelAnimationFrame(current.frame);
@@ -303,7 +313,7 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       current.readyFrame = 0;
     }
     incremental.disconnect();
-    activeRows.clear();
+    activeTargets.clear();
     cancelAnimationFrame(alignmentFrame);
     alignmentFrame = 0;
     current = null;
@@ -317,9 +327,9 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       current = view;
       container.replaceChildren(view.root);
       if (!view.restore) chrome.scrollTo(view.scroll);
-      for (const row of nearRows) {
+      for (const row of nearTargets) {
         if (!row.isConnected || !view.root.contains(row)) continue;
-        activeRows.add(row);
+        activeTargets.add(row);
       }
       if (view.position < view.end) step(view);
       else if (!view.position) mountNext(view);
@@ -329,13 +339,15 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
     });
   }
 
+  const rowsIn = node => node.comparisonRow === undefined ? [...node.children] : [node];
+
   function scheduleAlignment(reset = false) {
     resetSizes ||= reset;
     if (alignmentFrame || current?.mode !== 'rendered') return;
     alignmentFrame = requestAnimationFrame(() => attempt(() => {
       alignmentFrame = 0;
       const pairs = [];
-      for (const row of activeRows) {
+      for (const target of activeTargets) for (const row of rowsIn(target)) {
         const byId = new Map();
         for (const node of row.querySelectorAll('tr[data-pair], li[data-pair]')) {
           if (resetSizes) { node.style.minHeight = ''; node.style.height = ''; }
@@ -375,7 +387,7 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
         const obscured = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--chrome-obscured')) || 0;
         const y = Math.min(innerHeight - 1, Math.max(obscured, bounds.top) + 1);
         const hit = document.elementFromPoint(bounds.left + bounds.width / 4, y)?.closest('.pair-row');
-        const row = hit && view.root.contains(hit) ? hit : [...activeRows].filter(row => row.isConnected && row.getBoundingClientRect().bottom > 0)
+        const row = hit && view.root.contains(hit) ? hit : [...activeTargets].flatMap(rowsIn).filter(row => row.isConnected && row.getBoundingClientRect().bottom > 0)
           .sort((a, b) => a.comparisonRow - b.comparisonRow)[0];
         if (row) anchor = { row: row.comparisonRow, offset: -row.getBoundingClientRect().top };
       }
@@ -410,7 +422,7 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
     pause();
     resized.disconnect();
     visible.disconnect();
-    nearRows.clear();
+    nearTargets.clear();
     views.clear();
     comparison = result;
     names = filenames;

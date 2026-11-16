@@ -106,6 +106,35 @@ async function comparisonFrame() {
   }, { timeout: 30000 }).toBe(true);
   return found;
 }
+async function prepareSourceCheck(frame) {
+  await frame.evaluate(() => {
+    window.__sourceAcceptance = { captureId: 0, result: null };
+    window.addEventListener('message', ({ data }) => {
+      if (data?.type === 'state' && data.status === 'ready' && data.snapshot) window.__sourceAcceptance.captureId = data.snapshot.captureId;
+      if (data?.type === 'sourceStatus') window.__sourceAcceptance.result = data;
+    });
+  });
+}
+async function confirmedCurrentSources(frame) {
+  await expect.poll(() => frame.evaluate(() => {
+    const probe = window.__sourceAcceptance;
+    return probe.captureId > 0 && probe.result?.captureId === probe.captureId && probe.result.status === 'current';
+  })).toBe(true);
+  await expect(frame.locator('#source-status')).toBeHidden();
+}
+async function renderedAnchor(frame) {
+  return frame.evaluate(() => {
+    const y = document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2;
+    const row = document.elementFromPoint(innerWidth / 4, y)?.closest('.pair-row');
+    return row ? { index: [...document.querySelectorAll('.pair-row')].indexOf(row), text: row.textContent, offset: y - row.getBoundingClientRect().top } : null;
+  });
+}
+async function checkAnchor(frame, anchor) {
+  const row = frame.locator('.pair-row').nth(anchor.index);
+  await expect(row).toHaveText(anchor.text);
+  const offset = await row.evaluate(row => document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2 - row.getBoundingClientRect().top);
+  assert(Math.abs(offset - anchor.offset) < 3, `The logical reading position moved by ${offset - anchor.offset}px.`);
+}
 async function reloadPreview(frame) {
   const marker = `reload-${Date.now()}`;
   await frame.evaluate(value => { globalThis.__markdownAcceptanceReload = value; }, marker);
@@ -285,7 +314,11 @@ async function verify() {
   assert.equal(runtime.initiallyActive, false, 'The installed extension must activate through the user action, not the test driver.');
   if (scenario === 'restricted') assert.equal(runtime.trusted, false, 'The restricted-mode scenario must actually be untrusted.');
   if (scenario === 'virtual') assert.equal(runtime.virtualWorkspace, true, 'The virtual scenario must actually use a virtual workspace.');
-  const page = browser.contexts()[0].pages()[0];
+  let page;
+  await expect.poll(() => {
+    page = browser.contexts().flatMap(context => context.pages()).find(candidate => candidate.url().startsWith('vscode-file:'));
+    return !!page;
+  }, { timeout: 30000 }).toBe(true);
   await page.bringToFront();
   page.on('console', message => {
     if (message.type() === 'error' && (previewLocation(message.location().url) || /Content Security Policy|Refused to (load|execute)/i.test(message.text()))) previewDiagnostics.push({ type: 'console', text: message.text(), location: message.location() });
@@ -357,9 +390,11 @@ async function verify() {
     await expect(frame.locator('#status')).toHaveText('Comparison ready');
     await expect(frame.locator('#source-status')).toContainText('Source changed since capture');
     await expect(frame.locator('#comparison')).not.toContainText('CAPABILITY_REFRESH');
+    await prepareSourceCheck(frame);
     await frame.getByRole('button', { name: /Refresh/i }).focus();
     await frame.getByRole('button', { name: /Refresh/i }).press('Enter');
     await expect(frame.locator('#comparison')).toContainText('CAPABILITY_REFRESH');
+    await confirmedCurrentSources(frame);
     await expect(frame.getByRole('button', { name: /Refresh/i })).toBeFocused();
     record('Refresh observes new native/provider text without losing keyboard focus');
     frame = await verifyProviderRecovery();
@@ -383,11 +418,12 @@ async function verify() {
   await expect(frame.locator('#snapshot-label')).toHaveText(capturedAt);
   await expect(frame.locator('#source-status')).toContainText('Source changed since capture');
   record('Live edits stay separate from the captured preview and its timestamp, with an accurate stale notice');
+  await prepareSourceCheck(frame);
   await frame.getByRole('button', { name: /Refresh/i }).focus();
   await frame.getByRole('button', { name: /Refresh/i }).press('Enter');
   await expect(frame.locator('#comparison')).toContainText('REFRESHED_ONLY');
   await expect(frame.locator('#status')).toHaveText('Comparison ready');
-  await expect(frame.locator('#source-status')).toBeHidden();
+  await confirmedCurrentSources(frame);
   await expect(frame.getByRole('button', { name: /Refresh/i })).toBeFocused();
   record('Keyboard Refresh updates the fixed pair, clears staleness and retains focus');
   const previewLabel = await request({ op: 'hide' });
@@ -470,6 +506,44 @@ async function verify() {
   await expect(frame.locator('#comparison')).toContainText('STAGED_ONLY');
   await expect(frame.locator('#comparison')).not.toContainText('WORKTREE_ONLY');
   record('Real Git staged comparison preserves the index baseline');
+  const previewDocuments = await request({ op: 'preview-diff' });
+  assert(previewDocuments.every(document => document.preview), 'The native input must really begin as a clean preview-mode diff tab.');
+  frame = await comparisonFrame();
+  await expect(frame.locator('#status')).toHaveText('Comparison ready');
+  await frame.getByRole('button', { name: 'Open live Source diff', exact: true }).click();
+  const previewSource = await request({ op: 'active-diff' });
+  assert.deepEqual(previewSource.uris, previewDocuments.map(document => document.uri));
+  assert.deepEqual(previewSource.hashes, previewDocuments.map(document => createHash('sha256').update(document.text).digest('hex')));
+  assert.equal(previewSource.pairTabs, 1);
+  record('Live Source supports an original preview-mode native diff without duplicating or substituting the pair');
+  await request({ op: 'reading-state' });
+  frame = await comparisonFrame();
+  await expect(frame.locator('#status')).toHaveText('Comparison ready');
+  while (await frame.locator('.pair-row').count() < 480) {
+    const count = await frame.locator('.pair-row').count();
+    await frame.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+    await expect.poll(() => frame.locator('.pair-row').count()).toBeGreaterThan(count);
+  }
+  await frame.locator('.pair-row').nth(360).scrollIntoViewIfNeeded();
+  await frame.locator('.pair-row').nth(360).evaluate(row => scrollBy(0, row.getBoundingClientRect().top - 100));
+  await frame.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))))));
+  const anchor = await renderedAnchor(frame);
+  assert(anchor?.index > 120, 'The actual visible reading position must be beyond the initial Rendered batch.');
+  const readingTimestamp = await frame.locator('#snapshot-label').textContent();
+  const readingPreview = await request({ op: 'active-label' });
+  await frame.getByRole('button', { name: 'Open live Source diff', exact: true }).click();
+  await request({ op: 'active-diff' });
+  await page.getByRole('tab', { name: readingPreview, exact: false }).click();
+  frame = await comparisonFrame();
+  await expect(frame.locator('#status')).toHaveText('Comparison ready');
+  await expect(frame.locator('#snapshot-label')).toHaveText(readingTimestamp);
+  await checkAnchor(frame, anchor);
+  record('The actual Source round trip preserves a Rendered reading position beyond the initial batch');
+  frame = await reloadPreview(frame);
+  await expect(frame.locator('#status')).toHaveText('Comparison ready');
+  await expect(frame.locator('#snapshot-label')).toHaveText(readingTimestamp);
+  await checkAnchor(frame, anchor);
+  record('Verified webview reload preserves the same deep Rendered row and offset');
   const tableWorkload = await request({ op: 'large' });
   frame = await comparisonFrame();
   await expect(frame.locator('#comparison')).toContainText('Row 0');
@@ -502,10 +576,12 @@ async function verify() {
   await expect(visibleLine()).toBeVisible();
   const sourceTrials = [];
   for (let trial = 0; trial < 5; trial++) {
+    const previewStarted = performance.now();
     await page.getByRole('tab', { name: codePreview, exact: false }).click();
     frame = await comparisonFrame();
     await expect(frame.locator('#status')).toHaveText('Comparison ready');
     await expect(frame.locator('.source-row')).toHaveCount(0);
+    const previewReturnMs = performance.now() - previewStarted;
     const started = performance.now();
     await frame.getByRole('button', { name: 'Open live Source diff', exact: true }).click();
     await expect(visibleLine()).toBeVisible();
@@ -515,11 +591,11 @@ async function verify() {
     assert.deepEqual(source.hashes, nativeCode.hashes);
     assert.equal(source.pairTabs, 1);
     assert(source.visibleRanges.some(range => range.start <= 39999 && range.end >= 39999));
-    sourceTrials.push({ elapsedMs });
+    sourceTrials.push({ elapsedMs, previewReturnMs });
   }
   await writeFile(path.join(output, 'native-source.json'), JSON.stringify({ packageSha256, version: runtime.version,
     line: 39999, workload, trials: sourceTrials,
-    method: 'Five warm returns from the captured preview to the existing original native diff near line 40000 of the 50000-line code fixture. Automation click to visible native line, includes automation overhead. Original URI pair, text hashes, one diff tab and visible range asserted. No process memory, pixel offset or user percentile claim.' }, null, 2));
+    method: 'Five warm round trips between the captured preview and the existing original native diff near line 40000 of the 50000-line code fixture. elapsedMs is Source click to visible native line; previewReturnMs is preview-tab click to Comparison ready. Both include automation overhead and cached inputs; preview return includes rebuilding the captured comparison. Original URI pair, text hashes, one diff tab and visible range asserted. No process memory, pixel offset or user percentile claim.' }, null, 2));
   await page.getByRole('tab', { name: codePreview, exact: false }).click();
   frame = await comparisonFrame();
   await expect(frame.locator('#status')).toHaveText('Comparison ready');

@@ -28,10 +28,18 @@ jobs:
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
       - run: npm run test:vscode
-      - name: Repeat rendered page restoration on manual runs
+      - name: Repeat Rendered row and page restoration on manual runs
         if: github.event_name == 'workflow_dispatch'
-        run: npx playwright test --config playwright.vscode.config.mjs --grep 'nonzero rendered page survives' --repeat-each=20
-      - run: npm run package:vscode
+        run: npx playwright test --config playwright.vscode.config.mjs --grep 'nonzero rendered page survives|rendered row bookmark beyond the initial batch' --repeat-each=20
+      - run: |
+          npm run package:vscode
+          sha256sum artifacts/markdown-diff-vscode-*.vsix
+      - name: Keep the VS Code installer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: markdown-diff-vscode-${{ github.sha }}
+          path: artifacts/markdown-diff-vscode-*.vsix
+          if-no-files-found: error
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:

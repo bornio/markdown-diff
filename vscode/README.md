@@ -10,13 +10,15 @@ The preview is a snapshot. Refresh reads the same original and modified document
 
 Source is live and can differ from the captured preview. Opening Source reuses the original native comparison when it is still open, or reopens the same URI pair. It does not refresh the preview. When you return, a note identifies text that changed since capture or a source check that could not finish. Choose **Refresh** to capture the current text. Running **Render this comparison** again also captures the current text. Source stays available when the rendered comparison fails.
 
+Loaded rendered text stays in the document when you scroll away, preserving selection and navigation across the loaded preview. Returning from Source rebuilds the captured comparison.
+
 The extension supports ordinary text diff tabs for `.md`, `.markdown`, `.mdx`, and `.txt` files, or documents with the Markdown language selected. It treats MDX as Markdown and does not execute components. Merge editors, multi-file changes editors, and ordinary single-file editors must first open a text comparison.
 
 Images appear as labelled placeholders. This avoids displaying current workspace images as historical content. The rendered view marks changed image attributes. Open live Source to inspect the current Markdown. Only external HTTPS links are active in the preview. Relative links, file links, and command links stay inactive. No document images or remote scripts load.
 
 Comparisons run in a cancellable Web Worker. Large tables, lists, and supported code blocks use pages. Precision warnings identify work limits. Each input is limited to 8 million characters and 200,000 editor lines, and comparison work stops after 12 seconds. Indivisible sections that exceed the preview work budget are rejected before DOM construction, with guidance to use the native source comparison or split the section. Nothing is silently truncated.
 
-The preview size check covers rendered rows, pages, and Markdown line pairs. Each pair's HTML is limited to 262,144 characters and 8,000 opening elements. Both sides count, so an unchanged Markdown line can reach the limit at about 131,000 characters, earlier if HTML escaping expands it. Inline base64 images and minified single-line content can therefore reject the whole preview even when the edit is elsewhere. Use the native comparison for those documents. Splitting ordinary text can help, while an encoded image URI must remain intact.
+The preview size check covers rendered rows and pages. Each pair's HTML is limited to 262,144 characters and 8,000 opening elements, counting both sides. Oversized paragraphs or dense markup can reject the preview even when another part of the file changed. Use the native comparison or split ordinary text into smaller sections. Long code lines remain available when their rendered pages fit the limits. Source rows are not sent to the preview or checked against its DOM budget.
 
 Recovery uses the last confirmed snapshot, with matching content and timestamp. An overlapping command re-run can return an earlier coherent confirmed snapshot. If the browser cannot restore a view, the preview stops and points you back to the original comparison. Failed page navigation recovers at a safe starting position rather than automatically re-entering the faulty page.
 

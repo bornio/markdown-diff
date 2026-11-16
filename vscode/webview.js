@@ -18,7 +18,7 @@ const state = {
 const display = createComparisonView(comparison, { scrollTo(target) {
   const top = typeof target === 'number' ? target : window.scrollY + target.getBoundingClientRect().top - toolbar.getBoundingClientRect().height - 12;
   window.scrollTo({ top, behavior: 'instant' });
-} }, { renderDocument, onRendered: mounted, onError: presentationFailed, batchLimits: previewLimits.batch });
+} }, { renderDocument, onRendered: mounted, onError: presentationFailed, batchLimits: previewLimits.batch, chunkRows: 64 });
 
 function persist() {
   if (state.shown && !state.presentation) vscode.setState({ snapshotId: state.shown.snapshot.captureId, view: { rendered: display.getState().rendered } });
