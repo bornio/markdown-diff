@@ -90,6 +90,8 @@ body { padding:0; color:var(--text); }
   color:var(--ink);
 }
 .document-cell blockquote { background:var(--vscode-textBlockQuote-background,transparent); }
+.document-cell a:active { background:transparent; }
+.document-cell a:focus-visible { outline-offset:0; }
 .document-cell input[type=checkbox]:checked { border-color:var(--ink); }
 .document-cell input[type=checkbox]:checked:after { border-color:var(--vscode-checkbox-foreground,var(--ink)); }
 .image-placeholder { display:inline-block; padding:10px 12px; border:1px dashed var(--border-strong); border-radius:4px; color:var(--muted); background:var(--surface); font-size:12px; }

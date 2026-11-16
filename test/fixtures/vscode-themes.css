@@ -78,6 +78,23 @@
   --vscode-gitDecoration-addedResourceForeground:#81b88b;
   --vscode-gitDecoration-deletedResourceForeground:#c74e39;
 }
+:root[data-vscode-theme-id="Tomorrow Night Blue"] {
+  --vscode-foreground:#cccccc;
+  --vscode-editor-foreground:#ffffff;
+  --vscode-editor-background:#002451;
+  --vscode-focusBorder:#bbdaff;
+  --vscode-descriptionForeground:rgba(204,204,204,.7);
+  --vscode-editorWidget-background:#001c40;
+  --vscode-button-secondaryForeground:#cccccc;
+  --vscode-button-secondaryBackground:#ffffff30;
+  --vscode-button-secondaryHoverBackground:#ffffff30;
+  --vscode-checkbox-background:#001733;
+  --vscode-checkbox-foreground:#f0f0f0;
+  --vscode-textCodeBlock-background:rgba(10,10,10,.4);
+  --vscode-textLink-foreground:#3794ff;
+  --vscode-gitDecoration-addedResourceForeground:#81b88b;
+  --vscode-gitDecoration-deletedResourceForeground:#c74e39;
+}
 body {
   color:var(--vscode-editor-foreground);
   background-color:var(--vscode-editor-background);

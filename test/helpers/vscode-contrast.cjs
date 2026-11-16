@@ -74,15 +74,23 @@ exports.sampleContrast = function (scope = document.body) {
   const focusSelector = 'button:focus-visible,a:focus-visible,[tabindex]:focus-visible';
   for (const element of [scope, ...scope.querySelectorAll(focusSelector)].filter(element => element.matches(focusSelector))) {
     const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    const spread = Math.max(0, parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth));
+    let clipped = false;
+    for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      if (!/\b(paint|strict|content)\b/.test(getComputedStyle(ancestor).contain)) continue;
+      const bounds = ancestor.getBoundingClientRect();
+      if (rect.left - spread < bounds.left || rect.right + spread > bounds.right || rect.top - spread < bounds.top || rect.bottom + spread > bounds.bottom) clipped = true;
+    }
     if (style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0) nonText.push({ kind: 'focus-ring', target: element.id || element.textContent, width: style.outlineWidth, required: 3,
-      ...measure(parseFloat(style.outlineOffset) < 0 ? element : element.parentElement, style.outlineColor) });
+      clipped, ...measure(parseFloat(style.outlineOffset) < 0 ? element : element.parentElement, style.outlineColor) });
   }
   const root = getComputedStyle(document.documentElement);
   const bodyColor = getComputedStyle(document.body).color;
   const palette = scope === document.body ? { body: measure(document.body, bodyColor), nativeEditor: measure(document.body, root.getPropertyValue('--vscode-editor-foreground').trim() || bodyColor),
     metadata: measure(document.querySelector('#snapshot-label'), getComputedStyle(document.querySelector('#snapshot-label')).color) } : null;
   return { samples, palette, failures: samples.filter(sample => sample.ratio < sample.required).sort((a, b) => a.ratio - b.ratio),
-    nonText, nonTextFailures: nonText.filter(sample => sample.ratio < sample.required) };
+    nonText, nonTextFailures: nonText.filter(sample => sample.ratio < sample.required || sample.clipped) };
 };
 
 exports.interactiveContrast = async function (page, frame) {

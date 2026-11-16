@@ -63,6 +63,7 @@ for (const theme of [
   { id: 'Solarized Light', kind: 'vscode-light' },
   { id: 'Abyss', kind: 'vscode-dark' },
   { id: 'Monokai Dimmed', kind: 'vscode-dark' },
+  { id: 'Tomorrow Night Blue', kind: 'vscode-dark' },
 ]) {
   test(`native ${theme.id} styles keep rendered text and enabled pagination readable`, async ({ page }) => {
     const texts = fixture();
