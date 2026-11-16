@@ -483,6 +483,21 @@ async function verify() {
     await expect(page.getByText('Are you using a screen reader to operate VS Code?', { exact: true })).toBeHidden();
     await audit(frame, theme.id);
     const name = theme.id.replace(/[^a-z0-9]+/gi, '-');
+    if (theme.uiTheme === 'hc-light') {
+      await frame.locator('#refresh').focus();
+      await page.keyboard.press('Shift+Tab');
+      await expect(frame.locator('#open-source')).toBeFocused();
+      await page.screenshot({ path: path.join(output, `${name}-source-focus.png`) });
+      const codeLink = frame.getByRole('link', { name: 'codeGuide()', exact: true }).first();
+      await codeLink.focus();
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Shift+Tab');
+      await expect(codeLink).toBeFocused();
+      await page.screenshot({ path: path.join(output, `${name}-code-link-focus.png`) });
+    }
+    await frame.evaluate(() => document.activeElement.blur());
+    if (theme.uiTheme === 'hc-light' || theme.id === 'Abyss') await frame.locator('.pair-row').filter({ has: frame.getByRole('checkbox', { name: 'Task before', exact: true }) }).screenshot({ path: path.join(output, `${name}-task-states.png`) });
+    await frame.locator('.document-cell pre').first().scrollIntoViewIfNeeded();
     await frame.locator('.document-cell pre').first().screenshot({ path: path.join(output, `${name}-code.png`) });
     await page.screenshot({ path: path.join(output, `${name}.png`) });
   }
