@@ -30,7 +30,8 @@ async function openPreview(page, texts = [before, after], mode = 'rendered', rea
       getState: () => {
         const next = sessionStorage.getItem('preview-next-state');
         sessionStorage.removeItem('preview-next-state');
-        return JSON.parse(next || sessionStorage.getItem('preview-state') || 'null') || { mode };
+        window.loadedPreviewState = JSON.parse(next || sessionStorage.getItem('preview-state') || 'null') || { mode };
+        return window.loadedPreviewState;
       },
       setState: (value) => { window.saved = value; sessionStorage.setItem('preview-state', JSON.stringify(value)); },
       postMessage: (message) => {
@@ -394,7 +395,8 @@ test('a deep Source reading bookmark survives a real preview reload beyond the i
   const visibleAnchor = () => page.evaluate(() => {
     const y = document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2;
     const row = document.elementFromPoint(innerWidth / 4, y)?.closest('.source-row');
-    return row ? { line: row.querySelector('.source-number').textContent, offset: y - row.getBoundingClientRect().top } : null;
+    return row ? { line: row.querySelector('.source-number').textContent, offset: y - row.getBoundingClientRect().top,
+      scroll: scrollY, metadataHeight: document.querySelector('.comparison-metadata').getBoundingClientRect().height } : null;
   });
   const visible = await visibleAnchor();
   await page.reload();
@@ -404,7 +406,10 @@ test('a deep Source reading bookmark survives a real preview reload beyond the i
   await expect(visibleRow.locator('.source-number').first()).toHaveText(visible.line);
   const restoredOffset = await visibleRow.evaluate(row =>
     document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2 - row.getBoundingClientRect().top);
-  expect(Math.abs(restoredOffset - visible.offset)).toBeLessThan(3);
+  const recovery = await page.evaluate(() => ({ loaded: window.loadedPreviewState, saved: window.saved,
+    scroll: scrollY, metadataHeight: document.querySelector('.comparison-metadata').getBoundingClientRect().height,
+    historyRestoration: history.scrollRestoration }));
+  expect(Math.abs(restoredOffset - visible.offset), JSON.stringify({ visible, restoredOffset, recovery })).toBeLessThan(3);
   expect(await page.locator('.source-row').nth(1050).locator('.source-code').first().textContent()).toBe('Exact source line 525.\n');
 });
 
