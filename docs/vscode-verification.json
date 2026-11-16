@@ -1,9 +1,9 @@
 {
   "package": "markdown-diff-vscode-0.1.0.vsix",
-  "package_sha256": "83c578a111d56ef26af50d84d6aa35f36ada748105560a27de16cd8cdfc9e7f3",
+  "package_sha256": "2eceb650be0f44a26785012e3128e0bfc837546ba530e425c17fecf0bc2f5f3d",
   "runtime_sha256": {
     "extension.cjs": "1435d190a83b08fadd89d85f60cd03f33709fd5576356f149e908739774d540d",
-    "dist/webview.js": "d9f6a0a65163e45df390f51383ed36b30bcbf03fe0bedac34560fc5bd370378d",
+    "dist/webview.js": "170e774675c6921da5feb04d95be418f5661202365698839823e1cb9c3040392",
     "dist/webview.css": "79b9df95067e140ba6bccc74d504e89012d086af3147c7fcc3ede6f61f76514e"
   },
   "build": {
@@ -30,11 +30,11 @@
       "vscode/package.json": "1d3260455b6ee89d2783ca8c44561c1c94e7e8cf82e8d541f03d6cec9325db51",
       "vscode/preview-limits.json": "0e7013527b28ee444183fdab0042faa1e0ab1247cb288154151f6511f875bbaf",
       "vscode/webview.css": "60ce321b808c5a52beea84ecd56b9945cb0318661ea7892148e0166381378689",
-      "vscode/webview.js": "b4022fef3466354612f3ffbf2939e3de135f51638727853c8b886fc6e0833fd1"
+      "vscode/webview.js": "d2cba8c614efbd213ada800b34fc4f4b2576fa2c42f4f2901883f9c706246b6a"
     },
     "outputs": {
       "vscode/extension.cjs": "1435d190a83b08fadd89d85f60cd03f33709fd5576356f149e908739774d540d",
-      "vscode/dist/webview.js": "d9f6a0a65163e45df390f51383ed36b30bcbf03fe0bedac34560fc5bd370378d",
+      "vscode/dist/webview.js": "170e774675c6921da5feb04d95be418f5661202365698839823e1cb9c3040392",
       "vscode/dist/webview.css": "79b9df95067e140ba6bccc74d504e89012d086af3147c7fcc3ede6f61f76514e"
     },
     "node_version": "v26.13.1"
@@ -179,16 +179,16 @@
             "combinedInputBytes": 45875
           },
           "trials": 5,
-          "median_ms": 179.59999999403954,
+          "median_ms": 171.90000000596046,
           "range_ms": [
-            170.19999998807907,
-            196.90000000596046
+            166.59999999403954,
+            197.69999998807907
           ],
-          "maximum_observed_frame_gap_ms": 18.30000001192093,
+          "maximum_observed_frame_gap_ms": 18.80000001192093,
           "maximum_observed_long_task_ms": 0,
           "failures": 0,
-          "profiled_trial_total_ms": 171.5,
-          "profiled_worker_round_trip_ms": 76.19999998807907
+          "profiled_trial_total_ms": 172.2999999821186,
+          "profiled_worker_round_trip_ms": 75.90000000596046
         },
         {
           "workload": "prose",
@@ -197,16 +197,16 @@
             "combinedInputBytes": 15174
           },
           "trials": 5,
-          "median_ms": 265,
+          "median_ms": 262.40000000596046,
           "range_ms": [
-            254.90000000596046,
-            282.7000000178814
+            252.90000000596046,
+            279.5
           ],
-          "maximum_observed_frame_gap_ms": 18.900000005960464,
+          "maximum_observed_frame_gap_ms": 18.30000001192093,
           "maximum_observed_long_task_ms": 0,
           "failures": 0,
-          "profiled_trial_total_ms": 259.5,
-          "profiled_worker_round_trip_ms": 39.89999997615814
+          "profiled_trial_total_ms": 257.40000000596046,
+          "profiled_worker_round_trip_ms": 40.69999998807907
         },
         {
           "workload": "code",
@@ -215,19 +215,19 @@
             "combinedInputBytes": 7077821
           },
           "trials": 5,
-          "median_ms": 666.0999999940395,
+          "median_ms": 663.6000000238419,
           "range_ms": [
-            661.7000000178814,
-            694.5999999940395
+            659.2999999821186,
+            679.7999999821186
           ],
-          "maximum_observed_frame_gap_ms": 45.5,
+          "maximum_observed_frame_gap_ms": 40.20000001788139,
           "maximum_observed_long_task_ms": 0,
           "failures": 0,
-          "profiled_trial_total_ms": 676,
-          "profiled_worker_round_trip_ms": 530
+          "profiled_trial_total_ms": 673.2999999821186,
+          "profiled_worker_round_trip_ms": 535.5999999940395
         }
       ],
-      "tested_at": "2026-11-16T02:03:56.461Z"
+      "tested_at": "2026-11-16T02:18:07.910Z"
     },
     {
       "scenario": "minimum",
@@ -346,16 +346,16 @@
             "combinedInputBytes": 45875
           },
           "trials": 5,
-          "median_ms": 215.80000001192093,
+          "median_ms": 216,
           "range_ms": [
-            206.2999999821186,
-            216.40000000596046
+            205.30000001192093,
+            219.5
           ],
-          "maximum_observed_frame_gap_ms": 24.19999998807907,
+          "maximum_observed_frame_gap_ms": 24.599999994039536,
           "maximum_observed_long_task_ms": 0,
           "failures": 0,
-          "profiled_trial_total_ms": 212.5,
-          "profiled_worker_round_trip_ms": 117.59999999403954
+          "profiled_trial_total_ms": 216.2000000178814,
+          "profiled_worker_round_trip_ms": 117.2000000178814
         },
         {
           "workload": "prose",
@@ -364,16 +364,16 @@
             "combinedInputBytes": 15174
           },
           "trials": 5,
-          "median_ms": 265.40000000596046,
+          "median_ms": 252.69999998807907,
           "range_ms": [
-            251.5,
-            268.30000001192093
+            247.40000000596046,
+            267.69999998807907
           ],
-          "maximum_observed_frame_gap_ms": 23,
+          "maximum_observed_frame_gap_ms": 25.900000005960464,
           "maximum_observed_long_task_ms": 0,
           "failures": 0,
-          "profiled_trial_total_ms": 250.30000001192093,
-          "profiled_worker_round_trip_ms": 42.599999994039536
+          "profiled_trial_total_ms": 257.59999999403954,
+          "profiled_worker_round_trip_ms": 42.29999998211861
         },
         {
           "workload": "code",
@@ -382,19 +382,19 @@
             "combinedInputBytes": 7077821
           },
           "trials": 5,
-          "median_ms": 1081.7999999821186,
+          "median_ms": 1073.7000000178814,
           "range_ms": [
-            1075.699999988079,
-            1095.9000000059605
+            1064.9000000059605,
+            1082.5999999940395
           ],
-          "maximum_observed_frame_gap_ms": 92.40000000596046,
+          "maximum_observed_frame_gap_ms": 88.69999998807907,
           "maximum_observed_long_task_ms": 80,
           "failures": 0,
-          "profiled_trial_total_ms": 1028.0999999940395,
-          "profiled_worker_round_trip_ms": 838.4000000059605
+          "profiled_trial_total_ms": 1058.5,
+          "profiled_worker_round_trip_ms": 837.8000000119209
         }
       ],
-      "tested_at": "2026-11-16T02:04:33.115Z"
+      "tested_at": "2026-11-16T02:18:44.220Z"
     },
     {
       "scenario": "restricted",
@@ -434,7 +434,7 @@
         }
       ],
       "measurements": [],
-      "tested_at": "2026-11-16T02:04:39.860Z"
+      "tested_at": "2026-11-16T02:18:51.412Z"
     },
     {
       "scenario": "virtual",
@@ -474,7 +474,7 @@
         }
       ],
       "measurements": [],
-      "tested_at": "2026-11-16T02:04:46.109Z"
+      "tested_at": "2026-11-16T02:18:57.626Z"
     }
   ],
   "limits": [

@@ -27,7 +27,11 @@ async function openPreview(page, texts = [before, after], mode = 'rendered', rea
   await page.addInitScript(({ mode }) => {
     window.messages = [];
     window.acquireVsCodeApi = () => ({
-      getState: () => JSON.parse(sessionStorage.getItem('preview-state') || 'null') || { mode },
+      getState: () => {
+        const next = sessionStorage.getItem('preview-next-state');
+        sessionStorage.removeItem('preview-next-state');
+        return JSON.parse(next || sessionStorage.getItem('preview-state') || 'null') || { mode };
+      },
       setState: (value) => { window.saved = value; sessionStorage.setItem('preview-state', JSON.stringify(value)); },
       postMessage: (message) => {
         window.messages.push(message);
@@ -379,7 +383,6 @@ test('a deep Source reading bookmark survives a real preview reload beyond the i
   await expect(target).toBeAttached();
   await target.evaluate(node => window.scrollTo(0, window.scrollY + node.getBoundingClientRect().top + 5));
   await expect.poll(() => page.evaluate(() => window.saved?.view?.source?.anchor.row)).toBeGreaterThan(1000);
-  const bookmark = await page.evaluate(() => window.saved.view.source.anchor);
   const visibleAnchor = () => page.evaluate(() => {
     const y = document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2;
     const row = document.elementFromPoint(innerWidth / 4, y)?.closest('.source-row');
@@ -389,9 +392,6 @@ test('a deep Source reading bookmark survives a real preview reload beyond the i
   await page.reload();
   await expect(page.locator('#status')).toHaveText('Comparison ready');
   await expect(page.locator('#source-view')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.source-row').nth(bookmark.row)).toBeAttached();
-  const top = await page.locator('.source-row').nth(bookmark.row).evaluate(node => node.getBoundingClientRect().top);
-  expect(Math.abs(top + bookmark.offset)).toBeLessThan(3);
   const restored = await visibleAnchor();
   expect(restored.line).toBe(visible.line);
   expect(Math.abs(restored.offset - visible.offset)).toBeLessThan(3);
@@ -417,7 +417,7 @@ test('malformed and mismatched bookmarks do not apply to the current snapshot', 
     { snapshotId: 999, mode: 'source', view: { source: { anchor: { row: 20, offset: 5 }, pages: [] } } },
     { snapshotId: 1, mode: 'source', view: { source: { anchor: { row: '20', offset: null }, pages: [[0, -10], null, ['x', 999]] } } },
   ]) {
-    await page.evaluate(saved => sessionStorage.setItem('preview-state', JSON.stringify(saved)), saved);
+    await page.evaluate(saved => sessionStorage.setItem('preview-next-state', JSON.stringify(saved)), saved);
     await page.reload();
     await expect(page.locator('#status')).toHaveText('Comparison ready');
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
@@ -428,7 +428,7 @@ test('malformed and mismatched bookmarks do not apply to the current snapshot', 
 test('user navigation cancels an automatic deep bookmark jump while mounting', async ({ page }) => {
   const text = Array.from({ length: 1600 }, (_, i) => `Line ${i}`).join('\n');
   await openPreview(page, [text, text.replace('Line 1500', 'Changed 1500')]);
-  await page.evaluate(() => sessionStorage.setItem('preview-state', JSON.stringify({ snapshotId: 1, mode: 'source', view: { source: { anchor: { row: 1400, offset: 5 }, pages: [] } } })));
+  await page.evaluate(() => sessionStorage.setItem('preview-next-state', JSON.stringify({ snapshotId: 1, mode: 'source', view: { source: { anchor: { row: 1400, offset: 5 }, pages: [] } } })));
   await page.addInitScript(() => {
     new MutationObserver((_, observer) => {
       if (!document.querySelector('.source-row')) return;
@@ -494,7 +494,7 @@ test('presentation errors use sentence punctuation before the truthful prior-vie
 test('persisted row and page indices are clamped to this snapshot', async ({ page }) => {
   const text = Array.from({ length: 230 }, (_, i) => `- Item ${i + 1}`).join('\n');
   await openPreview(page, [text, text.replace('Item 220', 'Updated 220')]);
-  await page.evaluate(() => sessionStorage.setItem('preview-state', JSON.stringify({ snapshotId: 1, mode: 'rendered', view: { rendered: { anchor: { row: 999, offset: 0 }, pages: [[0, 999]] } } })));
+  await page.evaluate(() => sessionStorage.setItem('preview-next-state', JSON.stringify({ snapshotId: 1, mode: 'rendered', view: { rendered: { anchor: { row: 999, offset: 0 }, pages: [[0, 999]] } } })));
   await page.reload();
   await expect(page.locator('#status')).toHaveText('Comparison ready');
   await expect(page.getByRole('status').filter({ hasText: 'Rows 201' })).toContainText('Rows 201–230');
@@ -505,7 +505,7 @@ test('persisted row and page indices are clamped to this snapshot', async ({ pag
 test('a newer capture cancels an in-progress deep bookmark restoration', async ({ page }) => {
   const text = Array.from({ length: 3000 }, (_, i) => `RESTORE_INPUT line ${i}`).join('\n');
   const { refresh } = await openPreview(page, [text, text.replace('line 2500', 'changed 2500')]);
-  await page.evaluate(() => sessionStorage.setItem('preview-state', JSON.stringify({ snapshotId: 1, mode: 'source', view: { source: { anchor: { row: 2600, offset: 5 }, pages: [] } } })));
+  await page.evaluate(() => sessionStorage.setItem('preview-next-state', JSON.stringify({ snapshotId: 1, mode: 'source', view: { source: { anchor: { row: 2600, offset: 5 }, pages: [] } } })));
   await page.exposeFunction('supersedeRestore', () => refresh(['# Final original', '# Final changed']));
   await page.addInitScript(() => {
     new MutationObserver((_, observer) => {

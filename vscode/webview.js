@@ -217,6 +217,6 @@ window.addEventListener('scroll', () => {
   if (!scrollFrame) scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; persist(); });
 }, { passive: true });
 new ResizeObserver(() => document.documentElement.style.setProperty('--chrome-obscured', `${toolbar.getBoundingClientRect().height}px`)).observe(toolbar);
-window.addEventListener('pagehide', () => { stopWorker(); display.reset(); });
+window.addEventListener('pagehide', () => { persist(); stopWorker(); display.reset(); });
 update();
 vscode.postMessage({ type: 'ready' });

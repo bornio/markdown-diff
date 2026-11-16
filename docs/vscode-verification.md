@@ -4,7 +4,7 @@ This record covers the read-only snapshot of the native Markdown text comparison
 
 ## Artifact identity
 
-Package `markdown-diff-vscode-0.1.0.vsix`, SHA-256 `83c578a111d56ef26af50d84d6aa35f36ada748105560a27de16cd8cdfc9e7f3`.
+Package `markdown-diff-vscode-0.1.0.vsix`, SHA-256 `2eceb650be0f44a26785012e3128e0bfc837546ba530e425c17fecf0bc2f5f3d`.
 
 The [structured record](vscode-verification.json) binds source inputs, bundled outputs, archive entries, installed runtime files, and the unchanged acceptance harness. The build hashes inputs before bundling and checks them afterward. Each installed run compares its loaded bytes directly with the requested archive. The recorder refuses stale or inconsistent records and can be rerun with `npm run record:vscode`.
 
@@ -41,12 +41,12 @@ Each row summarizes five successful warm Refresh trials. Values are milliseconds
 
 | VS Code | Workload per document | Median wait | Trial range | Largest observed frame gap | Largest observed long task |
 | --- | --- | ---: | ---: | ---: | ---: |
-| 1.146.0 | 1,200-row table | 179.6 | 170.2 to 196.9 | 18.3 | 0.0 |
-| 1.146.0 | 100-section prose | 265.0 | 254.9 to 282.7 | 18.9 | 0.0 |
-| 1.146.0 | 50,000 code lines | 666.1 | 661.7 to 694.6 | 45.5 | 0.0 |
-| 1.85.0 | 1,200-row table | 215.8 | 206.3 to 216.4 | 24.2 | 0.0 |
-| 1.85.0 | 100-section prose | 265.4 | 251.5 to 268.3 | 23.0 | 0.0 |
-| 1.85.0 | 50,000 code lines | 1081.8 | 1075.7 to 1095.9 | 92.4 | 80.0 |
+| 1.146.0 | 1,200-row table | 171.9 | 166.6 to 197.7 | 18.8 | 0.0 |
+| 1.146.0 | 100-section prose | 262.4 | 252.9 to 279.5 | 18.3 | 0.0 |
+| 1.146.0 | 50,000 code lines | 663.6 | 659.3 to 679.8 | 40.2 | 0.0 |
+| 1.85.0 | 1,200-row table | 216.0 | 205.3 to 219.5 | 24.6 | 0.0 |
+| 1.85.0 | 100-section prose | 252.7 | 247.4 to 267.7 | 25.9 | 0.0 |
+| 1.85.0 | 50,000 code lines | 1073.7 | 1064.9 to 1082.6 | 88.7 | 80.0 |
 
 Timing starts at the capture-phase click and ends after the initial mounted frontier plus two animation frames. It includes cached native reads, worker startup, comparison, transfer and initial DOM construction. It excludes opening the native diff, every later page and first file loading. Every trial validates successful output and one changed source line. Raw records preserve input bytes, host load, actual viewport and observed callbacks.
 
