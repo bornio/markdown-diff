@@ -1,7 +1,7 @@
 import { chromium, test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { document, extensionHost } from './helpers/vscode-host.mjs';
-import { fixture, sampleContrast } from './helpers/vscode-contrast.cjs';
+import { fixture, sampleContrast, interactiveContrast } from './helpers/vscode-contrast.cjs';
 
 const before = '# Plan\n\n| Item | State |\n| --- | --- |\n| Build | Planned |\n\nA **strong** word.\n\n![Old image](https://example.com/old.png)\n\n[Guide](https://example.com/guide) [Relative](next.md) [Command](command:workbench.action.closeWindow)\n';
 const after = before.replace('Planned', 'Done').replace('**strong**', '*strong*').replace('Old image', 'New image').replace('old.png', 'new.png');
@@ -69,15 +69,29 @@ for (const theme of [
     await expect(page.locator('#notice')).toContainText('A table with merged cells');
     const next = page.getByRole('button', { name: 'Next', exact: true });
     await expect(next).toBeEnabled();
-    const { samples, failures } = await page.evaluate(sampleContrast);
+    const { samples, failures, nonText, nonTextFailures } = await page.evaluate(sampleContrast);
     expect(samples.some(sample => sample.code && !sample.quote && !sample.edit && !sample.change)).toBe(true);
     for (const edit of ['add', 'remove']) {
       expect(samples.some(sample => sample.code && sample.edit === edit)).toBe(true);
       expect(samples.some(sample => sample.code && sample.change === edit)).toBe(true);
+      for (const tag of ['A', 'H3', 'TH', 'SUMMARY']) expect(samples.some(sample => sample.tag === tag && sample.change === edit)).toBe(true);
     }
     expect(samples.some(sample => sample.code && sample.quote)).toBe(true);
     expect(samples.some(sample => sample.text === 'Next')).toBe(true);
     expect(failures.length, JSON.stringify(failures.slice(0, 3), null, 2)).toBe(0);
+    if (theme.id === 'Abyss') {
+      expect(await page.locator('body').evaluate(element => getComputedStyle(element).color)).toBe('rgb(102, 136, 204)');
+      expect(await page.locator('#snapshot-label').evaluate(element => getComputedStyle(element).color)).not.toBe('rgb(102, 136, 204)');
+    }
+    expect(await page.locator('.document-cell a[href="https://example.test/code"] code').first().evaluate(element => getComputedStyle(element).color === getComputedStyle(element.parentElement).color)).toBe(true);
+    expect(nonText.some(sample => sample.kind === 'task-checkmark')).toBe(true);
+    expect(nonTextFailures, JSON.stringify(nonTextFailures.slice(0, 3), null, 2)).toEqual([]);
+    const interactions = await interactiveContrast(page, page);
+    for (const state of interactions) {
+      expect(state.failures, `${theme.id} ${state.state} ${state.target}`).toEqual([]);
+      expect(state.nonTextFailures, `${theme.id} ${state.state} ${state.target}`).toEqual([]);
+      if (state.state === 'keyboard-focus') expect(state.nonText.some(sample => sample.kind === 'focus-ring')).toBe(true);
+    }
     await next.focus();
     await page.keyboard.press('Enter');
     await expect(page.getByRole('status').filter({ hasText: 'Rows 101' })).toContainText('Rows 101');
@@ -139,6 +153,35 @@ test('task checkboxes name their own rich text without nested task labels and pr
     return getSelection().toString();
   });
   for (const name of names.slice(0, 3)) expect(selection).toContain(name);
+});
+
+test('task names include image descriptions but exclude following code and quotes', async ({ page }) => {
+  const requests = [];
+  page.on('request', request => { if (request.url().startsWith('https://example.invalid/')) requests.push(request.url()); });
+  const text = [
+    '- [ ] ![Deploy release](https://example.invalid/deploy.png)',
+    '- [ ] **![Nested release](https://example.invalid/nested.png)**',
+    '- [ ] Review ![rocket](https://example.invalid/rocket.png) now',
+    '', '---', '',
+    '- [ ] Code task', '  ```text', '  Unrelated code', '  ```',
+    '- [ ] Quote task', '  > Unrelated quote', '',
+  ].join('\n');
+  await openPreview(page, [text, text + '\nA changed ending.']);
+  for (const side of ['before', 'after']) {
+    const cells = page.locator(`.document-cell[data-side=${side}]`);
+    const checkboxes = cells.getByRole('checkbox');
+    const names = ['Deploy release', 'Nested release', 'Review rocket now', 'Code task', 'Quote task'];
+    await expect(checkboxes).toHaveCount(names.length);
+    for (let i = 0; i < names.length; i++) {
+      await expect(checkboxes.nth(i)).toHaveAccessibleName(names[i]);
+      await expect(checkboxes.nth(i)).toBeDisabled();
+      await expect(checkboxes.nth(i)).not.toBeChecked();
+    }
+    await expect(cells.locator('pre')).toHaveText('Unrelated code\n');
+    await expect(cells.locator('blockquote')).toHaveText('Unrelated quote');
+    await expect(cells.locator('.image-placeholder')).toHaveCount(3);
+  }
+  expect(requests).toEqual([]);
 });
 
 test('read failures preserve the displayed snapshot and Refresh stays bound to the host', async ({ page }) => {
@@ -673,6 +716,8 @@ test('a rendered row bookmark beyond the initial batch survives preview reload',
   const target = page.locator('.pair-row').nth(180);
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await expect(target).toBeAttached();
+  for (let row = 0; row < 180; row += 40) await page.locator('.pair-row').nth(row).scrollIntoViewIfNeeded();
+  await target.scrollIntoViewIfNeeded();
   await target.evaluate(node => window.scrollTo(0, window.scrollY + node.getBoundingClientRect().top + 5));
   await expect.poll(() => page.evaluate(() => window.saved?.view?.rendered?.anchor.row)).toBeGreaterThanOrEqual(180);
   const visible = await page.evaluate(() => {

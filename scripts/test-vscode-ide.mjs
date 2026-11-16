@@ -10,7 +10,7 @@ import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
-const { fixture: contrastFixture, sampleContrast } = createRequire(import.meta.url)('../test/helpers/vscode-contrast.cjs');
+const { fixture: contrastFixture, sampleContrast, interactiveContrast } = createRequire(import.meta.url)('../test/helpers/vscode-contrast.cjs');
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const manifest = JSON.parse(await readFile(path.join(repo, 'vscode/package.json'), 'utf8'));
@@ -54,6 +54,7 @@ await writeFile(path.join(root, 'profile/User/settings.json'), JSON.stringify({
   'security.workspace.trust.startupPrompt': 'never', 'security.workspace.trust.untrustedFiles': 'open',
   'window.commandCenter': false, 'workbench.colorTheme': 'Default Dark Modern',
   'chat.disableAIFeatures': true,
+  'editor.accessibilitySupport': 'on',
 }));
 const isolated = ['--user-data-dir', path.join(root, 'profile'), '--extensions-dir', path.join(root, 'extensions'), '--shared-data-dir', path.join(root, 'shared')];
 if (packagePath) execFileSync(process.env.VSCODE_CLI || 'code', [...isolated, '--install-extension', path.resolve(packagePath), '--force'], { stdio: 'inherit' });
@@ -316,6 +317,7 @@ async function verify() {
   }, { timeout: 30000 }).toBe(true);
   await expect.poll(async () => (await json(path.join(root, 'ready.json')))?.ready, { timeout: 60000 }).toBe(true);
   const runtime = await json(path.join(root, 'ready.json'));
+  assert.equal(runtime.accessibilitySupport, 'on', 'The isolated host must run in its screen-reader support mode without an autodetection prompt.');
   assert.equal(runtime.initiallyActive, false, 'The installed extension must activate through the user action, not the test driver.');
   if (scenario === 'restricted') assert.equal(runtime.trusted, false, 'The restricted-mode scenario must actually be untrusted.');
   if (scenario === 'virtual') assert.equal(runtime.virtualWorkspace, true, 'The virtual scenario must actually use a virtual workspace.');
@@ -331,7 +333,7 @@ async function verify() {
   page.on('pageerror', error => {
     if (previewLocation(error.stack)) previewDiagnostics.push({ type: 'pageerror', text: error.message, stack: error.stack });
   });
-  page.on('request', request => { if (request.url().includes('acceptance.png')) imageRequests.push(request.url()); });
+  page.on('request', request => { if (request.url().startsWith('https://example.invalid/')) imageRequests.push(request.url()); });
   const documents = await request({ op: 'manual', invoke: false });
   if (scenario !== 'virtual') assert(documents[1].dirty);
   const sourceGroup = page.locator('.editor-group-container').filter({ has: page.getByRole('tab', { name: 'Markdown acceptance comparison', exact: false }) }).first();
@@ -357,7 +359,8 @@ async function verify() {
   assert.equal(await frame.evaluate(() => globalThis.__markdownAcceptanceInjected), undefined);
   await expect(frame.getByRole('link', { name: 'Unsafe link' })).toHaveCount(0);
   await expect(frame.locator('#comparison img')).toHaveCount(0);
-  await expect(frame.locator('.image-placeholder')).toHaveCount(4);
+  await expect(frame.locator('.image-placeholder')).toHaveCount(6);
+  for (const name of ['Deploy release', 'Code task', 'Quote task']) await expect(frame.getByRole('checkbox', { name, exact: true })).toHaveCount(2);
   assert.deepEqual(imageRequests, []);
   record('Real webview blocks unsafe Markdown and image requests');
   if (scenario === 'full') {
@@ -457,12 +460,27 @@ async function verify() {
     for (const kind of ['add', 'remove']) {
       assert(contrast.samples.some(sample => sample.code && sample.edit === kind), `Missing inline ${kind} code contrast in ${theme.id}.`);
       assert(contrast.samples.some(sample => sample.code && sample.change === kind), `Missing whole-block ${kind} code contrast in ${theme.id}.`);
+      for (const tag of ['A', 'H3', 'TH', 'SUMMARY']) assert(contrast.samples.some(sample => sample.tag === tag && sample.change === kind), `Missing ${tag} on ${kind} fill in ${theme.id}.`);
     }
     assert(contrast.samples.some(sample => sample.code && sample.quote && !sample.edit), `Missing quoted code contrast in ${theme.id}.`);
     assert(contrast.samples.some(sample => sample.tag === 'BUTTON' && sample.text === 'Next'), `Missing enabled pagination contrast in ${theme.id}.`);
+    assert(contrast.samples.some(sample => sample.code && sample.link && !sample.change), `Missing linked code contrast in ${theme.id}.`);
+    if (theme.uiTheme === 'vs-dark') assert.deepEqual(contrast.palette.body.foreground, contrast.palette.nativeEditor.foreground, `Unfilled page ink must retain ${theme.id}'s editor foreground.`);
+    assert(contrast.nonText.some(sample => sample.kind === 'task-checkmark'), `Missing task-state contrast in ${theme.id}.`);
     contrastRecords.push({ theme, ...contrast });
     await writeFile(path.join(output, 'contrast.json'), JSON.stringify(contrastRecords, null, 2));
     assert.deepEqual(contrast.failures, [], `Text contrast in ${theme.id}: ${JSON.stringify(contrast.failures)}`);
+    assert.deepEqual(contrast.nonTextFailures, [], `State-cue contrast in ${theme.id}: ${JSON.stringify(contrast.nonTextFailures)}`);
+    const interactions = await interactiveContrast(page, frame);
+    contrastRecords.push(...interactions.map(state => ({ theme, ...state })));
+    await writeFile(path.join(output, 'contrast.json'), JSON.stringify(contrastRecords, null, 2));
+    for (const state of interactions) {
+      assert.deepEqual(state.failures, [], `Text contrast in ${theme.id}, ${state.state}, ${state.target}: ${JSON.stringify(state.failures)}`);
+      assert.deepEqual(state.nonTextFailures, [], `State-cue contrast in ${theme.id}, ${state.state}, ${state.target}: ${JSON.stringify(state.nonTextFailures)}`);
+      if (state.state === 'keyboard-focus') assert(state.nonText.some(sample => sample.kind === 'focus-ring'), `Missing visible focus ring in ${theme.id}.`);
+    }
+    await frame.locator('.document-cell pre').first().scrollIntoViewIfNeeded();
+    await expect(page.getByText('Are you using a screen reader to operate VS Code?', { exact: true })).toBeHidden();
     await audit(frame, theme.id);
     const name = theme.id.replace(/[^a-z0-9]+/gi, '-');
     await frame.locator('.document-cell pre').first().screenshot({ path: path.join(output, `${name}-code.png`) });
@@ -480,6 +498,11 @@ async function verify() {
   const narrowViewport = await frame.evaluate(() => ({ width: innerWidth, height: innerHeight, devicePixelRatio }));
   assert(narrowViewport.width >= 300 && narrowViewport.width <= 600, `Expected a narrow readable editor column, got ${narrowViewport.width}px.`);
   assert(await frame.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'The narrow zoomed preview must not overflow horizontally.');
+  await frame.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: path.join(output, 'narrow-top.png') });
+  await frame.locator('#notice').scrollIntoViewIfNeeded();
+  await expect(frame.locator('#notice')).toBeInViewport({ ratio: 1 });
+  await page.screenshot({ path: path.join(output, 'narrow-warning.png') });
   await frame.locator('#comparison h1').first().scrollIntoViewIfNeeded();
   await expect(frame.locator('#comparison h1').first()).toBeInViewport({ ratio: 1 });
   await audit(frame, 'narrow-200-percent');
@@ -522,6 +545,7 @@ async function verify() {
     contrastRecords.push({ theme, state: 'comparison-error', ...contrast });
     await writeFile(path.join(output, 'contrast.json'), JSON.stringify(contrastRecords, null, 2));
     assert.deepEqual(contrast.failures, [], `Error-state text contrast in ${theme.id}: ${JSON.stringify(contrast.failures)}`);
+    assert.deepEqual(contrast.nonTextFailures, [], `Error-state cue contrast in ${theme.id}: ${JSON.stringify(contrast.nonTextFailures)}`);
   }
   record('Recovery notices and the retained comparison stay readable across every installed native theme');
   const failedPreviewLabel = await request({ op: 'hide' });

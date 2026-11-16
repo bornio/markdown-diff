@@ -247,7 +247,7 @@ exports.run = async function () {
   for (const name of ['extension.cjs', 'dist/webview.js', 'dist/webview.css']) {
     runtimeHashes[name] = createHash('sha256').update(await fs.readFile(path.join(extension.extensionPath, name))).digest('hex');
   }
-  await fs.writeFile(path.join(root, 'ready.json'), JSON.stringify({ ready: true, initiallyActive: extension.isActive, version: vscode.version, trusted: vscode.workspace.isTrusted, virtualWorkspace: !!vscode.workspace.workspaceFolders?.length && vscode.workspace.workspaceFolders.every(folder => folder.uri.scheme !== 'file'), extensionPath: extension.extensionPath, runtimeHashes }));
+  await fs.writeFile(path.join(root, 'ready.json'), JSON.stringify({ ready: true, initiallyActive: extension.isActive, version: vscode.version, accessibilitySupport: vscode.workspace.getConfiguration('editor').get('accessibilitySupport'), trusted: vscode.workspace.isTrusted, virtualWorkspace: !!vscode.workspace.workspaceFolders?.length && vscode.workspace.workspaceFolders.every(folder => folder.uri.scheme !== 'file'), extensionPath: extension.extensionPath, runtimeHashes }));
   let requestId = 1;
   while (true) {
     const input = path.join(root, `request-${requestId}.json`);

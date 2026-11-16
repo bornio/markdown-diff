@@ -62,13 +62,28 @@ function stopWorker() {
   state.timeout = null;
 }
 
+function taskLabel(checkbox) {
+  const boundary = 'blockquote,details,div,dl,h1,h2,h3,h4,h5,h6,hr,input,ol,p,pre,section,table,ul';
+  const isBoundary = node => node.nodeType === Node.ELEMENT_NODE && node.matches(boundary);
+  let label = '';
+  for (let sibling = checkbox.nextSibling; sibling && !isBoundary(sibling); sibling = sibling.nextSibling) {
+    const walker = document.createTreeWalker(sibling, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+      acceptNode: node => isBoundary(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+    });
+    for (let node = sibling; node; node = walker.nextNode()) {
+      if (node.nodeType === Node.TEXT_NODE) label += node.textContent;
+      else if (node.nodeName === 'IMG') label += node.getAttribute('alt') || '';
+      else if (node.nodeName === 'BR') label += ' ';
+    }
+  }
+  return label.replace(/\s+/g, ' ').trim() || 'Task item';
+}
+
 function renderDocument(html) {
   const template = document.createElement('template');
   template.innerHTML = html;
   for (const checkbox of template.content.querySelectorAll('input[type=checkbox]')) {
-    let label = '';
-    for (let sibling = checkbox.nextSibling; sibling && sibling.nodeName !== 'UL' && sibling.nodeName !== 'OL'; sibling = sibling.nextSibling) label += sibling.textContent;
-    checkbox.setAttribute('aria-label', label.replace(/\s+/g, ' ').trim() || 'Task item');
+    checkbox.setAttribute('aria-label', taskLabel(checkbox));
   }
   for (const image of template.content.querySelectorAll('img')) {
     const placeholder = document.createElement('span');

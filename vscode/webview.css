@@ -4,23 +4,25 @@
   color:var(--text);
   background:var(--vscode-editor-background,#151618);
   --page:var(--vscode-editor-background,#151618);
-  --text:var(--vscode-foreground,var(--vscode-editor-foreground,#d8d9dd));
+  --text:var(--vscode-editor-foreground,#d8d9dd);
+  --ink:var(--vscode-foreground,var(--text));
   --heading:var(--text);
   --strong:var(--text);
-  --muted:var(--text);
+  --muted:var(--vscode-descriptionForeground,var(--ink));
   --subtle:var(--muted);
   --border:var(--vscode-panel-border,#454545);
-  --border-strong:var(--vscode-contrastBorder,var(--vscode-focusBorder,#717b8c));
+  --border-strong:var(--vscode-contrastBorder,var(--focus));
   --surface:var(--vscode-editorWidget-background,var(--page));
   --control:var(--vscode-button-secondaryBackground,#303238);
   --secondary-text:var(--vscode-button-secondaryForeground,var(--text));
-  --hover:var(--vscode-button-secondaryHoverBackground,#454545);
+  --hover:var(--vscode-button-secondaryHoverBackground,var(--control));
   --focus:var(--vscode-focusBorder,#007fd4);
   --pressed:var(--hover);
   --code:var(--vscode-textCodeBlock-background,var(--surface));
   --code-border:var(--border);
   --inline-code:var(--code);
-  --quote:var(--text);
+  --checkbox:var(--vscode-checkbox-background,var(--surface));
+  --quote:var(--ink);
   --quote-border:var(--vscode-textBlockQuote-border,var(--border));
   --table-border:var(--border);
   --table-header:var(--surface);
@@ -31,20 +33,26 @@
   --add:var(--vscode-diffEditor-insertedLineBackground,#2ea04320);
   --remove:var(--vscode-diffEditor-removedLineBackground,#f8514920);
   --word-add:var(--vscode-diffEditor-insertedTextBackground,#2ea04340);
-  --word-add-text:var(--text);
+  --word-add-text:var(--ink);
   --word-remove:var(--vscode-diffEditor-removedTextBackground,#f8514940);
-  --word-remove-text:var(--text);
+  --word-remove-text:var(--ink);
   --add-marker:var(--green);
   --remove-marker:var(--red);
   --format:var(--vscode-editorInfo-foreground,var(--text));
   --notice:var(--surface);
-  --notice-text:var(--text);
+  --notice-text:var(--ink);
   --notice-border:var(--vscode-inputValidation-warningBorder,var(--border));
   --error:var(--surface);
-  --error-text:var(--text);
+  --error-text:var(--ink);
   --error-border:var(--vscode-inputValidation-errorBorder,var(--red));
 }
-:root:has(body.vscode-light) { --text:color-mix(in srgb,var(--vscode-foreground,#616161) 80%,#000); }
+:root:has(body.vscode-light) {
+  --text:color-mix(in srgb,var(--vscode-editor-foreground,#333) 80%,#000);
+  --ink:color-mix(in srgb,var(--vscode-foreground,#616161) 70%,#000);
+  --muted:color-mix(in srgb,var(--vscode-descriptionForeground,#717171) 85%,#000);
+  --focus:color-mix(in srgb,var(--vscode-focusBorder,#007fd4) 80%,#000);
+}
+:root:has(body.vscode-high-contrast,body.vscode-high-contrast-light) { --muted:var(--ink); }
 body { padding:0; color:var(--text); }
 .extension-toolbar {
   position:sticky;
@@ -68,7 +76,21 @@ body { padding:0; color:var(--text); }
 #comparison { padding:8px 0 40px; }
 .document-cell { font-size:var(--vscode-markdown-font-size,14px); padding-inline:24px; }
 .document-cell h1 { font-size:2em; padding-bottom:8px; }
-.document-cell pre,.document-cell code { font-family:var(--vscode-editor-font-family,ui-monospace,monospace); color:var(--text); }
+.document-cell pre,.document-cell code { font-family:var(--vscode-editor-font-family,ui-monospace,monospace); color:inherit; }
+.document-cell :is(blockquote,th,[data-change],ins[data-edit],del[data-edit]),.image-placeholder {
+  --text:var(--ink);
+  --heading:var(--ink);
+  --strong:var(--ink);
+  --muted:var(--ink);
+  --subtle:var(--ink);
+  --link:var(--ink);
+  --focus:var(--ink);
+  --border-strong:var(--ink);
+  color:var(--ink);
+}
+.document-cell blockquote { background:var(--vscode-textBlockQuote-background,transparent); }
+.document-cell input[type=checkbox]:checked { border-color:var(--ink); }
+.document-cell input[type=checkbox]:checked:after { border-color:var(--vscode-checkbox-foreground,var(--ink)); }
 .image-placeholder { display:inline-block; padding:10px 12px; border:1px dashed var(--border-strong); border-radius:4px; color:var(--muted); background:var(--surface); font-size:12px; }
 .image-placeholder:is([data-change=remove],[data-edit=remove]) { outline:2px solid var(--remove-marker); }
 .image-placeholder:is([data-change=add],[data-edit=add]) { outline:2px solid var(--add-marker); }

@@ -1,4 +1,6 @@
 :root {
+  --vscode-gitDecoration-addedResourceForeground:#587c0c;
+  --vscode-gitDecoration-deletedResourceForeground:#ad0707;
   --vscode-button-secondaryForeground:#616161;
   --vscode-button-secondaryBackground:#e0e0e0;
   --vscode-editorWidget-background:#f3f3f3;
@@ -14,16 +16,19 @@
   --vscode-diffEditor-removedTextBackground:rgba(255,0,0,.2);
 }
 :root[data-vscode-theme-id="Quiet Light"] {
+  --vscode-focusBorder:#9769dc;
   --vscode-editor-foreground:#333333;
   --vscode-editor-background:#f5f5f5;
 }
 :root[data-vscode-theme-id="Solarized Light"] {
+  --vscode-focusBorder:#b49471;
   --vscode-editor-foreground:#657b83;
   --vscode-editor-background:#fdf6e3;
   --vscode-editorWidget-background:#eee8d5;
   --vscode-button-secondaryBackground:#f5eaca;
 }
 :root[data-vscode-theme-id="Default High Contrast Light"] {
+  --vscode-gitDecoration-addedResourceForeground:#374e06;
   --vscode-foreground:#292929;
   --vscode-editor-foreground:#292929;
   --vscode-editor-background:#ffffff;
@@ -39,6 +44,9 @@
   --vscode-diffEditor-removedTextBackground:initial;
 }
 :root[data-vscode-theme-id="Abyss"] {
+  --vscode-focusBorder:#596f99;
+  --vscode-gitDecoration-addedResourceForeground:#81b88b;
+  --vscode-gitDecoration-deletedResourceForeground:#c74e39;
   --vscode-inputValidation-warningBackground:#5b7e7a;
   --vscode-foreground:#cccccc;
   --vscode-editor-foreground:#6688cc;
