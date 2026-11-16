@@ -386,6 +386,9 @@ async function verify() {
   await expect(frame.locator('#status')).toHaveText('Comparison ready');
   await expect(frame.locator('.source-row')).toHaveCount(0);
   record('Keyboard Source action reuses the exact native URI pair and live text without a third tab');
+  await request({ op: 'reading-layout' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await frame.evaluate(() => window.scrollTo(0, 0));
   if (scenario !== 'full') {
     await audit(frame, `${scenario}-rendered`);
     await request({ op: 'capability-update' });
@@ -443,8 +446,6 @@ async function verify() {
   await expect(frame.locator('#comparison')).toHaveAttribute('aria-busy', 'false');
   await expect(frame.locator('#snapshot-label')).toContainText('Snapshot captured');
   record('Hide/reveal and actual webview reload restore the captured Rendered comparison');
-  await request({ op: 'reading-layout' });
-  await page.setViewportSize({ width: 1440, height: 900 });
   await expect.poll(() => frame.locator('.document-cell pre').first().evaluate(pre => pre.scrollWidth <= pre.clientWidth)).toBe(true);
   await audit(frame, 'rendered-reloaded');
   const themes = await request({ op: 'themes' });
