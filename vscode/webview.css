@@ -84,6 +84,7 @@ body { padding:0; }
 .document-cell h1 { font-size:2em; padding-bottom:8px; }
 .document-cell pre,.document-cell code,.source-cell { font-family:var(--vscode-editor-font-family,ui-monospace,monospace); }
 .source-cell { font-size:var(--vscode-editor-font-size,12px); }
+.source-row { content-visibility:visible; }
 .image-placeholder { display:inline-block; padding:10px 12px; border:1px dashed var(--border-strong); border-radius:4px; color:var(--muted); background:var(--surface); font-size:12px; }
 .image-placeholder:is([data-change=remove],[data-edit=remove]) { outline:2px solid var(--remove-marker); }
 .image-placeholder:is([data-change=add],[data-edit=add]) { outline:2px solid var(--add-marker); }

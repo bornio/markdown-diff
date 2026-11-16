@@ -4,7 +4,7 @@ This record covers the read-only snapshot of the native Markdown text comparison
 
 ## Artifact identity
 
-Package `markdown-diff-vscode-0.1.0.vsix`, SHA-256 `1b7a7f73283a07b15217b8b3345c1a0c8370879bbf56a55f3a4be5a3cc1017ac`.
+Package `markdown-diff-vscode-0.1.0.vsix`, SHA-256 `93e8fa16ecdd3bbfed5aa83d7d54ddfed0707cb8c43b12a602f7e30462db0022`.
 
 This dated snapshot describes one built candidate. Future candidates keep their own results. Each installed run asserts that its loaded runtime files match the requested archive. Raw records preserve the package and test-harness hashes, versions, named checks and trial data in ignored `artifacts/`.
 
@@ -19,7 +19,7 @@ All runs use the same package on one macOS arm64 host. The acceptance driver run
 | restricted | 1.146.0 | false | false | 7 | 2 |
 | virtual | 1.146.0 | true | true | 7 | 2 |
 
-The source gates passed 88 Node tests and 31 website browser tests, plus the separately invoked 14 host and 32 bundled browser tests. Some counts overlap. They are not independent totals to add.
+The source gates passed 88 Node tests and 31 website browser tests, plus the separately invoked 14 host and 33 bundled browser tests. Some counts overlap. They are not independent totals to add.
 
 ## Correctness, recovery and reading state
 
@@ -27,7 +27,7 @@ Installed checks exercise the title action, unsaved text, exact Source syntax, f
 
 The host remembers the last current input confirmed after initial DOM mounting and alignment. The client owns actual visibility and notice wording. A narrowly crossed native-command re-run can recover an earlier coherent confirmed snapshot. This accepted fallback does not corrupt or write files and is not a claim of atomic pixels across processes.
 
-Logical reading bookmarks contain a row anchor, offset and page indices, tied to the snapshot ID. They contain no document text. Reload restores deep Source and a nonzero page after mounting the needed frontier and bounded layout settling. User navigation can cancel an automatic jump. Restoration is linear in preceding rows; errors deliberately return to a safe beginning rather than re-enter a faulty page.
+Source rows use actual layout as they mount incrementally, so offscreen height estimates cannot move the reading position before capture. Rendered rows retain deferred content layout. Logical reading bookmarks contain a row anchor, offset and page indices, tied to the snapshot ID. They contain no document text. Reload restores deep Source and a nonzero page after mounting the needed frontier and bounded layout settling. User navigation can cancel an automatic jump. Restoration is linear in preceding rows; errors deliberately return to a safe beginning rather than re-enter a faulty page.
 
 ## Accessibility and diagnostics
 
@@ -41,16 +41,20 @@ Each row summarizes five successful warm Refresh trials. Values are milliseconds
 
 | VS Code | Workload per document | Median wait | Trial range | Largest observed frame gap | Largest observed long task |
 | --- | --- | ---: | ---: | ---: | ---: |
-| 1.146.0 | 1,200-row table | 196.5 | 181.0 to 197.4 | 18.7 | 0.0 |
-| 1.146.0 | 100-section prose | 262.5 | 251.5 to 279.7 | 18.9 | 0.0 |
-| 1.146.0 | 50,000 code lines | 663.6 | 661.3 to 678.6 | 47.0 | 0.0 |
-| 1.85.0 | 1,200-row table | 216.8 | 214.7 to 229.6 | 24.4 | 0.0 |
-| 1.85.0 | 100-section prose | 261.1 | 250.9 to 263.6 | 22.3 | 0.0 |
-| 1.85.0 | 50,000 code lines | 1078.7 | 1074.3 to 1079.3 | 91.8 | 83.0 |
+| 1.146.0 | 1,200-row table | 196.0 | 167.0 to 198.6 | 19.3 | 0.0 |
+| 1.146.0 | 100-section prose | 263.6 | 262.4 to 279.4 | 18.8 | 0.0 |
+| 1.146.0 | 50,000 code lines | 686.1 | 666.2 to 698.0 | 44.5 | 0.0 |
+| 1.85.0 | 1,200-row table | 218.4 | 209.1 to 230.3 | 24.5 | 0.0 |
+| 1.85.0 | 100-section prose | 265.8 | 262.7 to 266.9 | 24.6 | 0.0 |
+| 1.85.0 | 50,000 code lines | 1070.3 | 1055.1 to 1079.2 | 98.8 | 79.0 |
 
 Timing starts at the capture-phase click and ends after the initial mounted frontier plus two animation frames. It includes cached native reads, worker startup, comparison, transfer and initial DOM construction. It excludes opening the native diff, every later page and first file loading. Every trial validates successful output and one changed source line. Raw records preserve input bytes, host load, actual viewport and observed callbacks.
 
 Profiles separate the broad worker round trip from the remaining initial-view work. That interval includes startup, computation and transfer, not pure CPU time. There is no speedup claim. Zero long-task values mean no observed overlapping task at the 50 ms threshold; frame sampling is not every paint or a user percentile.
+
+## Initial Source layout
+
+A separate diagnostic in VS Code 1.146.0 opened five fresh Source views of the 50,000-line code fixture. Initial mounting of 400 rows plus two frames took 144.1 to 155.6 ms, including automation observation overhead. The largest observed frame gap was 18.6 ms. No overlapping long task at the 50 ms threshold was observed. These trials reused cached native inputs and already completed Rendered comparisons. They exclude worker computation, full Source traversal and peak memory.
 
 ## Resource limits and delivery
 
@@ -78,4 +82,4 @@ MARKDOWN_DIFF_IDE_SCENARIO=restricted npm run test:vscode:ide -- artifacts/markd
 MARKDOWN_DIFF_IDE_SCENARIO=virtual npm run test:vscode:ide -- artifacts/markdown-diff-vscode-0.1.0.vsix
 ```
 
-Set `VSCODE_EXECUTABLE_PATH` and a distinct `MARKDOWN_DIFF_IDE_ARTIFACT_NAME` for another installed version. All profiles and extension directories are temporary. The CDP connection preserves Electron's browser context because older Electron does not implement Chromium's download-context controls. Manual GitHub Actions runs also repeat the deep Source restoration case 20 times on Ubuntu. CI execution and council judgments are recorded separately on the PR.
+Set `VSCODE_EXECUTABLE_PATH` and a distinct `MARKDOWN_DIFF_IDE_ARTIFACT_NAME` for another installed version. All profiles and extension directories are temporary. The CDP connection preserves Electron's browser context because older Electron does not implement Chromium's download-context controls. Manual GitHub Actions runs also repeat each deep Source restoration case 20 times on Ubuntu. CI execution and council judgments are recorded separately on the PR.

@@ -380,38 +380,43 @@ test('only the compact action bar stays pinned in a narrow column', async ({ pag
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test('a deep Source reading bookmark survives a real preview reload beyond the initial frontier', async ({ page }) => {
-  const text = Array.from({ length: 1600 }, (_, i) => `Exact source line ${i}.`).join('\n\n');
-  await openPreview(page, [text, text.replace('line 1500', 'changed 1500')]);
-  await page.getByRole('button', { name: 'Source', exact: true }).click();
-  for (let batch = 0; batch < 4; batch++) {
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await page.waitForTimeout(70);
-  }
-  const target = page.locator('.source-row').nth(1050);
-  await expect(target).toBeAttached();
-  await target.evaluate(node => window.scrollTo(0, window.scrollY + node.getBoundingClientRect().top + 5));
-  await expect.poll(() => page.evaluate(() => window.saved?.view?.source?.anchor.row)).toBeGreaterThan(1000);
-  const visibleAnchor = () => page.evaluate(() => {
-    const y = document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2;
-    const row = document.elementFromPoint(innerWidth / 4, y)?.closest('.source-row');
-    return row ? { line: row.querySelector('.source-number').textContent, offset: y - row.getBoundingClientRect().top,
-      scroll: scrollY, metadataHeight: document.querySelector('.comparison-metadata').getBoundingClientRect().height } : null;
+for (const withWarnings of [false, true]) {
+  test(`a deep Source reading bookmark${withWarnings ? ' with precision warnings' : ''} survives a real preview reload beyond the initial frontier`, async ({ page }) => {
+    const text = Array.from({ length: 1600 }, (_, i) => `Exact source line ${i}.`).join('\n\n');
+    const before = text + (withWarnings ? '\n\n' + 'a '.repeat(10000) : '');
+    const after = text.replace('line 1500', 'changed 1500') + (withWarnings ? '\n\n' + 'b '.repeat(10000) : '');
+    await openPreview(page, [before, after]);
+    if (withWarnings) await expect(page.locator('#notice')).toContainText('work limit');
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    for (let batch = 0; batch < 4; batch++) {
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await page.waitForTimeout(70);
+    }
+    const target = page.locator('.source-row').nth(1050);
+    await expect(target).toBeAttached();
+    await target.evaluate(node => window.scrollTo(0, window.scrollY + node.getBoundingClientRect().top + 5));
+    await expect.poll(() => page.evaluate(() => window.saved?.view?.source?.anchor.row)).toBeGreaterThan(1000);
+    const visibleAnchor = () => page.evaluate(() => {
+      const y = document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2;
+      const row = document.elementFromPoint(innerWidth / 4, y)?.closest('.source-row');
+      return row ? { line: row.querySelector('.source-number').textContent, offset: y - row.getBoundingClientRect().top,
+        scroll: scrollY, metadataHeight: document.querySelector('.comparison-metadata').getBoundingClientRect().height } : null;
+    });
+    const visible = await visibleAnchor();
+    await page.reload();
+    await expect(page.locator('#status')).toHaveText('Comparison ready');
+    await expect(page.locator('#source-view')).toHaveAttribute('aria-pressed', 'true');
+    const visibleRow = page.locator('.source-row').nth(Number(visible.line) - 1);
+    await expect(visibleRow.locator('.source-number').first()).toHaveText(visible.line);
+    const restoredOffset = await visibleRow.evaluate(row =>
+      document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2 - row.getBoundingClientRect().top);
+    const recovery = await page.evaluate(() => ({ loaded: window.loadedPreviewState, saved: window.saved,
+      scroll: scrollY, metadataHeight: document.querySelector('.comparison-metadata').getBoundingClientRect().height,
+      historyRestoration: history.scrollRestoration }));
+    expect(Math.abs(restoredOffset - visible.offset), JSON.stringify({ visible, restoredOffset, recovery })).toBeLessThan(3);
+    expect(await page.locator('.source-row').nth(1050).locator('.source-code').first().textContent()).toBe('Exact source line 525.\n');
   });
-  const visible = await visibleAnchor();
-  await page.reload();
-  await expect(page.locator('#status')).toHaveText('Comparison ready');
-  await expect(page.locator('#source-view')).toHaveAttribute('aria-pressed', 'true');
-  const visibleRow = page.locator('.source-row').nth(Number(visible.line) - 1);
-  await expect(visibleRow.locator('.source-number').first()).toHaveText(visible.line);
-  const restoredOffset = await visibleRow.evaluate(row =>
-    document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2 - row.getBoundingClientRect().top);
-  const recovery = await page.evaluate(() => ({ loaded: window.loadedPreviewState, saved: window.saved,
-    scroll: scrollY, metadataHeight: document.querySelector('.comparison-metadata').getBoundingClientRect().height,
-    historyRestoration: history.scrollRestoration }));
-  expect(Math.abs(restoredOffset - visible.offset), JSON.stringify({ visible, restoredOffset, recovery })).toBeLessThan(3);
-  expect(await page.locator('.source-row').nth(1050).locator('.source-code').first().textContent()).toBe('Exact source line 525.\n');
-});
+}
 
 test('a nonzero rendered page survives a real preview reload', async ({ page }) => {
   const text = Array.from({ length: 230 }, (_, i) => `- Item ${i + 1}`).join('\n');
