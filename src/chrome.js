@@ -157,6 +157,10 @@ function createCollapse(header, paused) {
     const delta = y - lastY;
     lastY = y;
     if (!delta || paused() || !readLayout(header).collapse) return;
+    if (title.querySelector(':focus-visible')) {
+      settle(0);
+      return;
+    }
     header.removeAttribute('data-settling');
     setHidden(hidden + delta);
     clearTimeout(snapTimer);
