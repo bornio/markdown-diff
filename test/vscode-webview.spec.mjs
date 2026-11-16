@@ -392,9 +392,11 @@ test('a deep Source reading bookmark survives a real preview reload beyond the i
   await page.reload();
   await expect(page.locator('#status')).toHaveText('Comparison ready');
   await expect(page.locator('#source-view')).toHaveAttribute('aria-pressed', 'true');
-  const restored = await visibleAnchor();
-  expect(restored.line).toBe(visible.line);
-  expect(Math.abs(restored.offset - visible.offset)).toBeLessThan(3);
+  const visibleRow = page.locator('.source-row').nth(Number(visible.line) - 1);
+  await expect(visibleRow.locator('.source-number').first()).toHaveText(visible.line);
+  const restoredOffset = await visibleRow.evaluate(row =>
+    document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2 - row.getBoundingClientRect().top);
+  expect(Math.abs(restoredOffset - visible.offset)).toBeLessThan(3);
   expect(await page.locator('.source-row').nth(1050).locator('.source-code').first().textContent()).toBe('Exact source line 525.\n');
 });
 
