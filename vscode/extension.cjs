@@ -20,10 +20,7 @@ function html(webview, extensionUri) {
 <body>
   <header class="extension-toolbar">
     <div class="extension-actions">
-      <div class="view-switch" role="group" aria-label="Comparison view">
-        <button id="rendered-view" type="button" aria-pressed="true">Rendered</button>
-        <button id="source-view" type="button" aria-pressed="false">Source</button>
-      </div>
+      <button id="open-source" type="button">Open live Source diff</button>
       <button id="refresh" type="button" title="Read the same two documents again">Refresh</button>
     </div>
   </header>
@@ -31,6 +28,7 @@ function html(webview, extensionUri) {
   <div class="comparison-metadata">
     <p id="source-label" class="source-label"></p>
     <p id="snapshot-label" class="snapshot-label">Reading the comparison…</p>
+    <p id="source-status" class="source-status" role="status" aria-live="polite" hidden></p>
     <div class="document-labels">
       <div><span class="side-label">Original</span><span id="before-label"></span></div>
       <div><span class="side-label">Changed</span><span id="after-label"></span></div>
@@ -70,6 +68,19 @@ function activate(context) {
       status: 'reading', message: '', closed: false,
     };
     sessions.set(key, session);
+    let sourceCheck = 0;
+    const checkSources = async () => {
+      const snapshot = session.confirmedSnapshot;
+      if (!snapshot || session.closed) return;
+      const check = ++sourceCheck;
+      let status;
+      try {
+        const documents = await Promise.all(sources.map((uri) => vscode.workspace.openTextDocument(uri)));
+        status = documents[0].getText() === snapshot.before.text && documents[1].getText() === snapshot.after.text ? 'current' : 'changed';
+      } catch { status = 'unknown'; }
+      if (session.closed || check !== sourceCheck || snapshot !== session.confirmedSnapshot) return;
+      await panel.webview.postMessage({ type: 'sourceStatus', captureId: snapshot.captureId, status });
+    };
     const send = (includeSnapshot = false) => {
       if (session.closed) return;
       void panel.webview.postMessage({
@@ -105,10 +116,20 @@ function activate(context) {
     };
     const receive = panel.webview.onDidReceiveMessage(async (message) => {
       if (!message || typeof message !== 'object') return;
-      if (message.type === 'ready') send(true);
+      if (message.type === 'ready') { send(true); await checkSources(); }
       else if (message.type === 'refresh') await session.capture();
+      else if (message.type === 'openSource') {
+        try {
+          const group = vscode.window.tabGroups.all.find((group) => group.tabs.some((tab) =>
+            tab.input instanceof vscode.TabInputTextDiff && tab.input.original.toString() === sources[0].toString() && tab.input.modified.toString() === sources[1].toString()));
+          await vscode.commands.executeCommand('vscode.diff', sources[0], sources[1], session.sourceLabel, { viewColumn: group?.viewColumn ?? vscode.ViewColumn.Active });
+        } catch (error) {
+          await vscode.window.showErrorMessage(`Could not open live Source diff. ${error instanceof Error ? error.message : 'The editor could not open this comparison.'}`);
+        }
+      }
       else if (message.type === 'comparisonRendered' && session.status === 'ready' && message.captureId === session.captureId && message.captureId === session.snapshot?.captureId) {
         session.confirmedSnapshot = session.snapshot;
+        await checkSources();
       } else if (message.type === 'comparisonFailed' && message.captureId === session.snapshot?.captureId && session.status !== 'reading' && typeof message.message === 'string') {
         session.status = 'error';
         session.message = message.message.slice(0, 1900);
@@ -120,10 +141,12 @@ function activate(context) {
         } catch {}
       }
     });
+    const visibility = panel.onDidChangeViewState(() => { if (panel.active) return checkSources(); });
     panel.onDidDispose(() => {
       session.closed = true;
       ++session.captureId;
       receive.dispose();
+      visibility.dispose();
       sessions.delete(key);
     });
     panel.webview.html = html(panel.webview, context.extensionUri);

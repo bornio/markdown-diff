@@ -4,17 +4,19 @@ Read Markdown changes as rendered tables, lists, headings, and text. The extensi
 
 1. Open a Markdown text comparison from Source Control, or use **Select for Compare** and **Compare with Selected** in Explorer.
 2. Choose **Markdown Diff: Render this comparison** from the Command Palette or the preview button in the diff editor title.
-3. Switch between **Rendered** and **Source**. Edit in the original VS Code editor, then choose **Refresh** in the preview.
+3. Choose **Open live Source diff** to return to the original native comparison. Edit in VS Code, then choose **Refresh** in the preview.
 
 The preview is a snapshot. Refresh reads the same original and modified document URIs again, including unsaved editor text. It preserves the baseline selected by VS Code. It does not select HEAD, stage changes, write files, or follow another tab. The original comparison's label appears above both sides. Unsaved sides are marked. Reopening the same captured snapshot restores its logical reading position and page. Refresh or a new command capture starts a new view.
 
+Source is live and can differ from the captured preview. Opening Source reuses the original native comparison when it is still open, or reopens the same URI pair. It does not refresh the preview. When you return, a note identifies text that changed since capture or a source check that could not finish. Choose **Refresh** to capture the current text. Running **Render this comparison** again also captures the current text. Source stays available when the rendered comparison fails.
+
 The extension supports ordinary text diff tabs for `.md`, `.markdown`, `.mdx`, and `.txt` files, or documents with the Markdown language selected. It treats MDX as Markdown and does not execute components. Merge editors, multi-file changes editors, and ordinary single-file editors must first open a text comparison.
 
-Images appear as labelled placeholders. This avoids displaying current workspace images as historical content. Source retains their exact Markdown, and the rendered view marks changed image attributes. Only external HTTPS links are active. Relative links, file links, and command links stay inactive. No document images or remote scripts load.
+Images appear as labelled placeholders. This avoids displaying current workspace images as historical content. The rendered view marks changed image attributes. Open live Source to inspect the current Markdown. Only external HTTPS links are active in the preview. Relative links, file links, and command links stay inactive. No document images or remote scripts load.
 
 Comparisons run in a cancellable Web Worker. Large tables, lists, and supported code blocks use pages. Precision warnings identify work limits. Each input is limited to 8 million characters and 200,000 editor lines, and comparison work stops after 12 seconds. Indivisible sections that exceed the preview work budget are rejected before DOM construction, with guidance to use the native source comparison or split the section. Nothing is silently truncated.
 
-The preview checks serialized HTML for each paired row or page, including Source. A pair is limited to 262,144 characters and 8,000 opening elements. Both sides count, so an unchanged Source line can reach the limit at about 131,000 characters, earlier if HTML escaping expands it. Inline base64 images and minified single-line content can therefore reject the whole preview even when the edit is elsewhere. Use the native comparison for those documents. Splitting ordinary text can help, while an encoded image URI must remain intact.
+The preview size check covers rendered rows, pages, and Markdown line pairs. Each pair's HTML is limited to 262,144 characters and 8,000 opening elements. Both sides count, so an unchanged Markdown line can reach the limit at about 131,000 characters, earlier if HTML escaping expands it. Inline base64 images and minified single-line content can therefore reject the whole preview even when the edit is elsewhere. Use the native comparison for those documents. Splitting ordinary text can help, while an encoded image URI must remain intact.
 
 Recovery uses the last confirmed snapshot, with matching content and timestamp. An overlapping command re-run can return an earlier coherent confirmed snapshot. If the browser cannot restore a view, the preview stops and points you back to the original comparison. Failed page navigation recovers at a safe starting position rather than automatically re-entering the faulty page.
 

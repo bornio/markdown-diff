@@ -10,10 +10,9 @@ const comparison = $('#comparison');
 const toolbar = $('.extension-toolbar');
 const notice = $('#notice');
 const refresh = $('#refresh');
-const buttons = { rendered: $('#rendered-view'), source: $('#source-view') };
 const saved = vscode.getState();
 const state = {
-  mode: saved?.mode === 'source' ? 'source' : 'rendered', shown: null, presentation: null, attemptKey: '',
+  shown: null, presentation: null, attemptKey: '', sourceStatus: null,
   captureId: 0, reading: true, error: '', worker: null, timeout: null,
 };
 const display = createComparisonView(comparison, { scrollTo(target) {
@@ -22,14 +21,18 @@ const display = createComparisonView(comparison, { scrollTo(target) {
 } }, { renderDocument, onRendered: mounted, onError: presentationFailed, batchLimits: previewLimits.batch });
 
 function persist() {
-  if (state.shown && !state.presentation) vscode.setState({ snapshotId: state.shown.snapshot.captureId, mode: state.mode, view: display.getState() });
+  if (state.shown && !state.presentation) vscode.setState({ snapshotId: state.shown.snapshot.captureId, view: { rendered: display.getState().rendered } });
 }
 
 function update() {
   const result = state.presentation?.kind === 'failed' ? null : state.shown?.result;
   const busy = state.reading || !!state.worker || (!!state.presentation && state.presentation.kind !== 'failed');
   comparison.setAttribute('aria-busy', String(busy));
-  for (const [mode, button] of Object.entries(buttons)) button.setAttribute('aria-pressed', String(mode === state.mode));
+  const sourceStatus = state.sourceStatus && state.sourceStatus.captureId === state.shown?.snapshot.captureId ? state.sourceStatus.status : null;
+  const sourceMessage = sourceStatus === 'changed' ? 'Source changed since capture. Refresh to update the preview.'
+    : sourceStatus === 'unknown' ? 'Could not check live Source. The captured preview is unchanged. Refresh to try again.' : '';
+  if ($('#source-status').textContent !== sourceMessage) $('#source-status').textContent = sourceMessage;
+  $('#source-status').hidden = !sourceMessage;
   let status = 'Comparison ready';
   if (state.reading) status = 'Reading documents…';
   else if (state.presentation?.kind === 'restore') status = 'Restoring previous snapshot…';
@@ -48,7 +51,8 @@ function update() {
   notice.hidden = !notice.textContent;
   notice.classList.toggle('error', !!state.error);
   $('#stats').textContent = result ? `Lines · ${result.stats.added} added · ${result.stats.removed} removed · ${result.stats.changed} changed` : '';
-  if (!state.shown) $('#snapshot-label').textContent = state.reading ? 'Reading the comparison…' : 'No snapshot displayed.';
+  if (state.presentation && state.presentation.kind !== 'failed') $('#snapshot-label').textContent = 'Preparing the snapshot…';
+  else if (!state.shown) $('#snapshot-label').textContent = state.reading ? 'Reading the comparison…' : 'No snapshot displayed.';
 }
 
 function stopWorker() {
@@ -65,7 +69,7 @@ function renderDocument(html) {
     const placeholder = document.createElement('span');
     placeholder.className = 'image-placeholder';
     placeholder.textContent = `Image not loaded · ${image.alt || 'No description'}`;
-    placeholder.title = 'Image preview is not loaded. Source shows its exact Markdown.';
+    placeholder.title = 'Image preview is not loaded. Open live Source diff to inspect the current Markdown.';
     placeholder.setAttribute('role', 'img');
     placeholder.setAttribute('aria-label', `${image.alt || 'Image'}. Preview not loaded.`);
     for (const attribute of image.attributes) if (attribute.name.startsWith('data-')) placeholder.setAttribute(attribute.name, attribute.value);
@@ -101,7 +105,7 @@ function mount(value, kind = 'candidate', bookmark = null) {
   state.presentation = { ...value, kind };
   try {
     display.reset(value.result, { before: value.snapshot.before.label, after: value.snapshot.after.label }, bookmark);
-    display.show(state.mode);
+    display.show('rendered');
   } catch (error) { presentationFailed(error); }
   update();
 }
@@ -170,7 +174,7 @@ function compare(snapshot, kind) {
     if (data.status === 'error' && typeof data.message === 'string') { fail(data.message); return; }
     if (data.status !== 'ready' || !data.comparison) { fail('The comparison worker returned an invalid result. Refresh to try again.'); return; }
     stopWorker();
-    mount({ snapshot, result: data.comparison }, kind, saved?.snapshotId === snapshot.captureId ? saved.view : null);
+    mount({ snapshot, result: data.comparison }, kind, saved?.snapshotId === snapshot.captureId ? { rendered: saved.view?.rendered } : null);
   };
   worker.onerror = () => { if (state.worker === worker) fail('The comparison worker stopped unexpectedly. Refresh to try again.'); };
   state.timeout = setTimeout(() => { if (state.worker === worker) fail('This comparison exceeded 12 seconds. Split very large or deeply nested documents into smaller files.'); }, 12000);
@@ -180,6 +184,11 @@ function compare(snapshot, kind) {
 }
 
 window.addEventListener('message', ({ data }) => {
+  if (data?.type === 'sourceStatus' && Number.isInteger(data.captureId) && ['current', 'changed', 'unknown'].includes(data.status)) {
+    if (!state.sourceStatus || data.captureId >= state.sourceStatus.captureId) state.sourceStatus = data;
+    update();
+    return;
+  }
   if (!data || data.type !== 'state' || !Number.isInteger(data.captureId) || data.captureId < state.captureId || !['reading', 'ready', 'error'].includes(data.status)) return;
   const newer = data.captureId > state.captureId;
   state.captureId = data.captureId;
@@ -199,12 +208,7 @@ window.addEventListener('message', ({ data }) => {
   update();
 });
 
-for (const [mode, button] of Object.entries(buttons)) button.addEventListener('click', () => {
-  state.mode = mode;
-  if (state.shown || state.presentation) display.show(mode);
-  update();
-  persist();
-});
+$('#open-source').addEventListener('click', () => vscode.postMessage({ type: 'openSource' }));
 refresh.addEventListener('click', () => {
   state.reading = true;
   cancelComparison();

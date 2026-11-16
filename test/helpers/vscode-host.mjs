@@ -21,6 +21,8 @@ export function extensionHost(before = document('before.md', '# Before'), after 
   const commands = new Map();
   const panels = [];
   const notices = [];
+  const errors = [];
+  const executions = [];
   const external = [];
   const context = { extensionUri: uri(pathToFileURL(fileURLToPath(extensionRoot)).href), subscriptions: [] };
   const api = {
@@ -33,14 +35,19 @@ export function extensionHost(before = document('before.md', '# Before'), after 
       if (!found) throw new Error('Document unavailable');
       return found;
     } },
-    commands: { registerCommand: (id, action) => { commands.set(id, action); return { dispose() {} }; } },
+    commands: {
+      registerCommand: (id, action) => { commands.set(id, action); return { dispose() {} }; },
+      executeCommand: async (...args) => { executions.push(args); },
+    },
     window: {
       tabGroups: { activeTabGroup: { viewColumn: 1, activeTab: { label: 'README.md (Working Tree)', input: new TabInputTextDiff(before.uri, after.uri) } } },
       showInformationMessage: async (message) => notices.push(message),
+      showErrorMessage: async (message) => errors.push(message),
       createWebviewPanel: (viewType, title, column, options) => {
         const disposals = [];
+        const visibility = new Set();
         const panel = {
-          viewType, title, column, options, messages: [], reveals: 0,
+          viewType, title, column, options, messages: [], reveals: 0, active: true,
           webview: {
             cspSource: 'https://assets.test',
             asWebviewUri: (target) => `https://assets.test/${target.path.split('/').pop()}`,
@@ -48,14 +55,18 @@ export function extensionHost(before = document('before.md', '# Before'), after 
             onDidReceiveMessage: (listener) => { panel.receive = listener; return { dispose() { panel.receive = async () => {}; } }; },
           },
           onDidDispose: (listener) => disposals.push(listener),
+          onDidChangeViewState: (listener) => { visibility.add(listener); return { dispose: () => visibility.delete(listener) }; },
           dispose: () => disposals.forEach((listener) => listener()),
-          reveal(column) { this.reveals++; this.revealColumn = column; },
+          async changeViewState(active) { this.active = active; for (const listener of visibility) await listener({ webviewPanel: this }); },
+          reveal(column) { this.reveals++; this.revealColumn = column; void this.changeViewState(true); },
         };
         panels.push(panel);
         return panel;
       },
     },
   };
+  api.window.tabGroups.activeTabGroup.tabs = [api.window.tabGroups.activeTabGroup.activeTab];
+  api.window.tabGroups.all = [api.window.tabGroups.activeTabGroup];
   const module = { exports: {} };
   vm.runInNewContext(readFileSync(new URL('extension.cjs', extensionRoot), 'utf8'), {
     require: (name) => name === 'vscode' ? api : require(name), module, URL, Error,
@@ -66,5 +77,5 @@ export function extensionHost(before = document('before.md', '# Before'), after 
   }, { filename: 'extension.cjs' });
   module.exports.activate(context);
   const run = () => commands.get('markdownDiff.renderComparison')();
-  return { api, panels, documents, context, notices, external, run };
+  return { api, panels, documents, context, notices, errors, executions, external, run };
 }

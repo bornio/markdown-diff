@@ -64,6 +64,24 @@ exports.run = async function () {
 
   async function act(request) {
     if (request.op === 'activation-status') return extension.isActive;
+    if (request.op === 'active-label') return vscode.window.tabGroups.activeTabGroup.activeTab.label;
+    if (request.op === 'active-diff') {
+      const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+      assert(input instanceof vscode.TabInputTextDiff);
+      const documents = await Promise.all([input.original, input.modified].map(uri => vscode.workspace.openTextDocument(uri)));
+      return {
+        uris: [input.original.toString(), input.modified.toString()],
+        hashes: documents.map(document => createHash('sha256').update(document.getText()).digest('hex')),
+        pairTabs: vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.input instanceof vscode.TabInputTextDiff && tab.input.original.toString() === input.original.toString() && tab.input.modified.toString() === input.modified.toString()).length,
+        visibleRanges: vscode.window.activeTextEditor?.visibleRanges.map(range => ({ start: range.start.line, end: range.end.line })),
+      };
+    }
+    if (request.op === 'live-position') {
+      const editor = vscode.window.activeTextEditor;
+      editor.selection = new vscode.Selection(request.line, 0, request.line, 0);
+      editor.revealRange(new vscode.Range(request.line, 0, request.line, 0), vscode.TextEditorRevealType.InCenter);
+      return editor.document.lineAt(request.line).text;
+    }
     if (request.op === 'manual') {
       const leftUri = virtual ? vscode.Uri.parse('markdown-diff-fs:/workspace/before.md') : vscode.Uri.file(path.join(root, 'workspace', 'before.md'));
       const rightUri = virtual ? vscode.Uri.parse('markdown-diff-fs:/workspace/after.md') : vscode.Uri.file(path.join(root, 'workspace', 'after.md'));
@@ -109,6 +127,10 @@ exports.run = async function () {
     if (request.op === 'second-group') {
       await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(root, 'workspace', 'before.md'))), { viewColumn: vscode.ViewColumn.Two, preview: false });
       return true;
+    }
+    if (request.op === 'first-group') {
+      await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
+      return vscode.window.tabGroups.activeTabGroup.viewColumn;
     }
     if (request.op === 'reuse-second-group') {
       const pair = currentPair;

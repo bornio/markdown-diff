@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { document, extensionHost, uri } from './helpers/vscode-host.mjs';
 
-const latest = (panel) => panel.messages.at(-1);
+const latest = (panel) => panel.messages.findLast(message => message.type === 'state');
 const rendered = async (panel, captureId) => {
   await panel.receive({ type: 'comparisonRendered', captureId });
 };
@@ -100,12 +100,13 @@ for (const confirmationAfterFailure of [false, true]) {
     await host.run();
     const reads = [];
     host.api.workspace.openTextDocument = () => new Promise((resolve, reject) => reads.push({ resolve, reject }));
-    const refreshing = host.run();
+    const refreshing = panel.receive({ type: 'refresh' });
     if (!confirmationAfterFailure) await rendered(panel, 2);
     reads[0].reject(new Error('Provider unavailable'));
     reads[1].reject(new Error('Provider unavailable'));
     await refreshing;
     if (confirmationAfterFailure) await rendered(panel, 2);
+    host.api.workspace.openTextDocument = async () => { throw new Error('Provider unavailable'); };
     await panel.receive({ type: 'ready' });
     assert.equal(latest(panel).status, 'error');
     assert.equal(latest(panel).snapshot.captureId, 1);
@@ -221,3 +222,133 @@ test('the native line budget is checked before reading text and a rejected Refre
   assert.equal(latest(panel).status, 'ready');
   assert.equal(latest(panel).snapshot.after.text, withinBudget);
 });
+
+const sourceStatus = (panel) => panel.messages.findLast(message => message.type === 'sourceStatus');
+
+test('live Source uses the receiving session original URI pair and label even before rendering', async () => {
+  const before = document('README.md', 'baseline', { uri: uri('git:/workspace/README.md?opaque=staged') });
+  const after = document('README.md', 'dirty text', { isDirty: true });
+  const host = extensionHost(before, after);
+  await host.run();
+  const panel = host.panels[0];
+  const originalGroup = host.api.window.tabGroups.activeTabGroup;
+  originalGroup.viewColumn = 3;
+  host.api.window.tabGroups.activeTabGroup = { viewColumn: 1, activeTab: { label: 'Other', input: {} }, tabs: [] };
+  const state = latest(panel);
+  await panel.receive({ type: 'openSource', original: 'file:///unrelated.md', modified: 'command:unsafe', label: 'Untrusted' });
+  const [command, left, right, label, options] = host.executions[0];
+  assert.equal(command, 'vscode.diff');
+  assert.equal(left, before.uri);
+  assert.equal(right, after.uri);
+  assert.equal(label, 'README.md (Working Tree)');
+  assert.equal(options.viewColumn, 3);
+  assert.equal(latest(panel), state);
+  assert.match(panel.webview.html, />Open live Source diff<\/button>/);
+  assert.doesNotMatch(panel.webview.html, /aria-pressed|id="source-view"|id="rendered-view"/);
+});
+
+test('closed native tabs reopen the fixed pair and Source failure leaves renderer recovery intact', async () => {
+  const host = extensionHost();
+  await host.run();
+  const panel = host.panels[0];
+  host.api.window.tabGroups.all = [];
+  await panel.receive({ type: 'openSource' });
+  assert.equal(host.executions[0][4].viewColumn, host.api.ViewColumn.Active);
+  await rendered(panel, 1);
+  const state = latest(panel);
+  host.api.commands.executeCommand = async () => { throw new Error('Native provider unavailable'); };
+  await panel.receive({ type: 'openSource' });
+  assert.equal(latest(panel), state);
+  assert.match(host.errors[0], /Could not open live Source diff.*Native provider unavailable/);
+  host.documents.clear();
+  await panel.receive({ type: 'refresh' });
+  assert.equal(latest(panel).snapshot.captureId, 1);
+  assert.match(latest(panel).message, /Refresh failed/);
+});
+
+test('returning to the preview compares actual live text without changing the captured input', async () => {
+  const before = document('before.md', 'old');
+  const after = document('after.md', 'captured', { version: 7 });
+  const host = extensionHost(before, after);
+  await host.run();
+  const panel = host.panels[0];
+  await rendered(panel, 1);
+  assert.equal(sourceStatus(panel).status, 'current');
+  const state = latest(panel);
+  host.documents.set(after.uri.toString(), document('after.md', 'captured', { version: 8 }));
+  await panel.changeViewState(true);
+  assert.equal(sourceStatus(panel).status, 'current');
+  host.documents.set(after.uri.toString(), document('after.md', 'reopened different text', { version: 1 }));
+  await panel.receive({ type: 'openSource' });
+  await panel.changeViewState(true);
+  assert.equal(sourceStatus(panel).status, 'changed');
+  assert.equal(sourceStatus(panel).captureId, 1);
+  assert.equal(latest(panel), state);
+  assert.equal(state.snapshot.after.text, 'captured');
+  await panel.receive({ type: 'refresh' });
+  await rendered(panel, 2);
+  assert.equal(sourceStatus(panel).captureId, 2);
+  assert.equal(sourceStatus(panel).status, 'current');
+  assert.equal(latest(panel).snapshot.after.text, 'reopened different text');
+});
+
+test('source changes during rendering and provider failures have independent informational results', async () => {
+  const host = extensionHost();
+  await host.run();
+  const panel = host.panels[0];
+  host.documents.set('file:///workspace/before.md', document('before.md', 'changed before confirmation'));
+  await rendered(panel, 1);
+  assert.equal(sourceStatus(panel).status, 'changed');
+  const state = latest(panel);
+  host.documents.clear();
+  await panel.changeViewState(true);
+  assert.equal(sourceStatus(panel).status, 'unknown');
+  assert.equal(latest(panel), state);
+  await panel.receive({ type: 'ready' });
+  assert.equal(latest(panel).status, 'ready');
+  assert.equal(latest(panel).snapshot.before.text, '# Before');
+});
+
+test('a later source check supersedes a pending check for the same capture', async () => {
+  const host = extensionHost();
+  await host.run();
+  const panel = host.panels[0];
+  await rendered(panel, 1);
+  const reads = [];
+  host.api.workspace.openTextDocument = target => new Promise((resolve, reject) => reads.push({ target, resolve, reject }));
+  const slow = panel.changeViewState(true);
+  const fast = panel.changeViewState(true);
+  reads[2].resolve(document('before.md', '# Before'));
+  reads[3].resolve(document('after.md', '# After'));
+  await fast;
+  const count = panel.messages.length;
+  reads[0].reject(new Error('Old check failure'));
+  reads[1].resolve(document('after.md', 'old change'));
+  await slow;
+  assert.equal(panel.messages.length, count);
+  assert.equal(sourceStatus(panel).status, 'current');
+});
+
+for (const closed of [false, true]) {
+  test(`a pending source check cannot publish after ${closed ? 'disposal' : 'a different capture is confirmed'}`, async () => {
+    const host = extensionHost();
+    await host.run();
+    const panel = host.panels[0];
+    await rendered(panel, 1);
+    const originalOpen = host.api.workspace.openTextDocument;
+    const reads = [];
+    host.api.workspace.openTextDocument = () => new Promise(resolve => reads.push(resolve));
+    const checking = panel.changeViewState(true);
+    host.api.workspace.openTextDocument = originalOpen;
+    if (closed) panel.dispose();
+    else {
+      await panel.receive({ type: 'refresh' });
+      await rendered(panel, 2);
+    }
+    const count = panel.messages.length;
+    reads[0](document('before.md', 'outdated result'));
+    reads[1](document('after.md', 'outdated result'));
+    await checking;
+    assert.equal(panel.messages.length, count);
+  });
+}

@@ -41,7 +41,7 @@ The page reads history from the GitHub API, which allows 60 requests an hour fro
 
 ## VS Code extension
 
-Open a Markdown text diff in VS Code, then choose **Markdown Diff: Render this comparison**. The extension displays the same pair as a rendered snapshot, with Source and Refresh controls. Editing stays in VS Code.
+Open a Markdown text diff in VS Code, then choose **Markdown Diff: Render this comparison**. The extension displays the pair as a rendered snapshot. **Open live Source diff** returns to the original native comparison for editing. Source can change while the preview keeps its captured text. Return to the preview to check for changes, then choose **Refresh** to capture them. Running **Render this comparison** again also captures the current text.
 
 Run `npm run package:vscode` to create `artifacts/markdown-diff-vscode-0.1.0.vsix`. See the [extension guide](vscode/README.md) for installation, supported inputs, limits, and test commands.
 

@@ -60,7 +60,7 @@ const env = { ...process.env, MARKDOWN_DIFF_IDE_ROOT: root, MARKDOWN_DIFF_IDE_EX
 env.MARKDOWN_DIFF_IDE_SCENARIO = scenario;
 if (packagePath) env.MARKDOWN_DIFF_EXPECT_INSTALLED = '1';
 delete env.ELECTRON_RUN_AS_NODE;
-const args = [...isolated, '--new-window', '--skip-welcome', '--skip-release-notes', '--disable-updates', '--disable-telemetry', `--crash-reporter-directory=${path.join(root, 'crashes')}`, `--remote-debugging-port=${port}`, `--extensionTestsPath=${path.join(repo, 'test/vscode-ide/driver.cjs')}`];
+const args = [...isolated, '--new-window', '--skip-welcome', '--skip-release-notes', '--disable-updates', '--disable-telemetry', '--disable-backgrounding-occluded-windows', `--crash-reporter-directory=${path.join(root, 'crashes')}`, `--remote-debugging-port=${port}`, `--extensionTestsPath=${path.join(repo, 'test/vscode-ide/driver.cjs')}`];
 if (scenario !== 'restricted') args.push('--disable-workspace-trust');
 args.push(`--extensionDevelopmentPath=${packagePath ? path.join(root, 'driver') : path.join(repo, 'vscode')}`);
 if (scenario === 'virtual') {
@@ -100,7 +100,7 @@ async function comparisonFrame() {
   let found;
   await expect.poll(async () => {
     for (const context of browser.contexts()) for (const page of context.pages()) for (const frame of page.frames().reverse()) {
-      if (await frame.locator('#comparison').isVisible().catch(() => false)) { found = frame; return true; }
+      if (await frame.locator('#comparison').isVisible().catch(() => false) && await frame.evaluate(() => document.visibilityState === 'visible').catch(() => false)) { found = frame; return true; }
     }
     return false;
   }, { timeout: 30000 }).toBe(true);
@@ -286,6 +286,7 @@ async function verify() {
   if (scenario === 'restricted') assert.equal(runtime.trusted, false, 'The restricted-mode scenario must actually be untrusted.');
   if (scenario === 'virtual') assert.equal(runtime.virtualWorkspace, true, 'The virtual scenario must actually use a virtual workspace.');
   const page = browser.contexts()[0].pages()[0];
+  await page.bringToFront();
   page.on('console', message => {
     if (message.type() === 'error' && (previewLocation(message.location().url) || /Content Security Policy|Refused to (load|execute)/i.test(message.text()))) previewDiagnostics.push({ type: 'console', text: message.text(), location: message.location() });
   });
@@ -301,7 +302,7 @@ async function verify() {
   if (scenario === 'full') {
     await request({ op: 'second-group' });
     await expect(titleAction).toHaveCount(0);
-    await sourceGroup.getByRole('tab', { name: 'Markdown acceptance comparison', exact: false }).click();
+    assert.equal(await request({ op: 'first-group' }), 1);
     await expect(titleAction).toBeVisible();
   }
   await titleAction.click();
@@ -331,13 +332,30 @@ async function verify() {
     frame = await comparisonFrame();
     record('Reusing the same pair reveals its single preview in the newly active editor group');
   }
-  await frame.getByRole('button', { name: 'Source', exact: true }).click();
-  await expect(frame.locator('#comparison')).toContainText('**format**');
-  await expect(frame.locator('#comparison')).toContainText('*format*');
-  record('Source retains exact formatting syntax');
+  await expect(frame.locator('#status')).toHaveText('Comparison ready');
+  const originalPreview = await request({ op: 'active-label' });
+  await frame.getByRole('button', { name: 'Open live Source diff', exact: true }).focus();
+  await frame.getByRole('button', { name: 'Open live Source diff', exact: true }).press('Enter');
+  const nativeSource = await request({ op: 'active-diff' });
+  assert.deepEqual(nativeSource.uris, documents.map(document => document.uri));
+  assert.deepEqual(nativeSource.hashes, documents.map(document => createHash('sha256').update(document.text).digest('hex')));
+  assert.equal(nativeSource.pairTabs, 1, 'Source must reuse the original native diff.');
+  await page.getByRole('tab', { name: originalPreview, exact: false }).click();
+  frame = await comparisonFrame();
+  await expect(frame.locator('#status')).toHaveText('Comparison ready');
+  await expect(frame.locator('.source-row')).toHaveCount(0);
+  record('Keyboard Source action reuses the exact native URI pair and live text without a third tab');
   if (scenario !== 'full') {
-    await audit(frame, `${scenario}-source`);
+    await audit(frame, `${scenario}-rendered`);
     await request({ op: 'capability-update' });
+    await frame.getByRole('button', { name: 'Open live Source diff', exact: true }).click();
+    const changed = await request({ op: 'active-diff' });
+    assert.notEqual(changed.hashes[1], nativeSource.hashes[1]);
+    assert.deepEqual(changed.uris, nativeSource.uris);
+    await page.getByRole('tab', { name: originalPreview, exact: false }).click();
+    frame = await comparisonFrame();
+    await expect(frame.locator('#status')).toHaveText('Comparison ready');
+    await expect(frame.locator('#source-status')).toContainText('Source changed since capture');
     await expect(frame.locator('#comparison')).not.toContainText('CAPABILITY_REFRESH');
     await frame.getByRole('button', { name: /Refresh/i }).focus();
     await frame.getByRole('button', { name: /Refresh/i }).press('Enter');
@@ -351,40 +369,48 @@ async function verify() {
     await finish(runtime);
     return;
   }
+  const capturedAt = await frame.locator('#snapshot-label').textContent();
   await request({ op: 'edit' });
+  await frame.getByRole('button', { name: 'Open live Source diff', exact: true }).click();
+  const editedSource = await request({ op: 'active-diff' });
+  assert.deepEqual(editedSource.uris, nativeSource.uris);
+  assert.notEqual(editedSource.hashes[1], nativeSource.hashes[1]);
+  assert.equal(editedSource.pairTabs, 1);
+  await page.getByRole('tab', { name: originalPreview, exact: false }).click();
+  frame = await comparisonFrame();
+  await expect(frame.locator('#status')).toHaveText('Comparison ready');
   await expect(frame.locator('#comparison')).not.toContainText('REFRESHED_ONLY');
+  await expect(frame.locator('#snapshot-label')).toHaveText(capturedAt);
+  await expect(frame.locator('#source-status')).toContainText('Source changed since capture');
+  record('Live edits stay separate from the captured preview and its timestamp, with an accurate stale notice');
   await frame.getByRole('button', { name: /Refresh/i }).focus();
   await frame.getByRole('button', { name: /Refresh/i }).press('Enter');
   await expect(frame.locator('#comparison')).toContainText('REFRESHED_ONLY');
+  await expect(frame.locator('#status')).toHaveText('Comparison ready');
+  await expect(frame.locator('#source-status')).toBeHidden();
   await expect(frame.getByRole('button', { name: /Refresh/i })).toBeFocused();
-  record('Refresh updates the fixed pair and snapshots stay fixed before refresh');
-  await frame.getByRole('button', { name: 'Rendered', exact: true }).focus();
-  await frame.getByRole('button', { name: 'Rendered', exact: true }).press('Enter');
-  await expect(frame.getByRole('button', { name: 'Rendered', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await frame.getByRole('button', { name: 'Source', exact: true }).focus();
-  await frame.getByRole('button', { name: 'Source', exact: true }).press('Enter');
-  await expect(frame.getByRole('button', { name: 'Source', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  record('Keyboard switches the comparison mode');
+  record('Keyboard Refresh updates the fixed pair, clears staleness and retains focus');
   const previewLabel = await request({ op: 'hide' });
   await page.getByRole('tab', { name: previewLabel, exact: false }).click();
   frame = await comparisonFrame();
   frame = await reloadPreview(frame);
   await expect(frame.locator('#comparison')).toContainText('REFRESHED_ONLY');
-  await expect(frame.getByRole('button', { name: 'Source', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  record('Hide/reveal and actual webview reload restore the snapshot and non-default Source mode');
-  await audit(frame, 'source-dark');
-  await frame.getByRole('button', { name: 'Rendered', exact: true }).click();
+  await expect(frame.locator('#status')).toHaveText('Comparison ready');
+  await expect(frame.locator('#comparison')).toHaveAttribute('aria-busy', 'false');
+  await expect(frame.locator('#snapshot-label')).toContainText('Snapshot captured');
+  record('Hide/reveal and actual webview reload restore the captured Rendered comparison');
+  await audit(frame, 'rendered-reloaded');
   for (const [name, theme] of [['dark', 'Default Dark Modern'], ['light', 'Default Light Modern'], ['high-contrast', 'Default High Contrast'], ['high-contrast-light', 'Default High Contrast Light']]) {
     await request({ op: 'theme', name: theme });
     await expect(frame.locator('body')).toHaveClass(new RegExp(name === 'high-contrast' ? 'vscode-high-contrast' : `vscode-${name}`));
     await frame.locator('body').screenshot({ path: path.join(output, `${name}.png`) });
     await audit(frame, name);
   }
-  record('All four native themes and non-default Source mode pass automated WCAG checks');
+  record('All four native themes and reloaded Rendered view pass automated WCAG checks');
   await request({ op: 'reading-layout' });
   await page.setViewportSize({ width: 1000, height: 700 });
   await request({ op: 'zoom', level: Math.log(2) / Math.log(1.2) });
-  await expect(frame.getByRole('button', { name: 'Source', exact: true })).toBeInViewport();
+  await expect(frame.getByRole('button', { name: 'Open live Source diff', exact: true })).toBeInViewport();
   await expect(frame.getByRole('button', { name: 'Refresh', exact: true })).toBeInViewport();
   const narrowViewport = await frame.evaluate(() => ({ width: innerWidth, height: innerHeight, devicePixelRatio }));
   assert(narrowViewport.width >= 300 && narrowViewport.width <= 600, `Expected a narrow readable editor column, got ${narrowViewport.width}px.`);
@@ -444,34 +470,6 @@ async function verify() {
   await expect(frame.locator('#comparison')).toContainText('STAGED_ONLY');
   await expect(frame.locator('#comparison')).not.toContainText('WORKTREE_ONLY');
   record('Real Git staged comparison preserves the index baseline');
-  await request({ op: 'reading-state' });
-  frame = await comparisonFrame();
-  await expect(frame.locator('#status')).toHaveText('Comparison ready');
-  await frame.getByRole('button', { name: 'Source', exact: true }).click();
-  while (await frame.locator('.source-row').count() < 1200) {
-    const count = await frame.locator('.source-row').count();
-    await frame.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    await expect.poll(() => frame.locator('.source-row').count()).toBeGreaterThan(count);
-  }
-  await frame.locator('.source-row').nth(900).scrollIntoViewIfNeeded();
-  await frame.evaluate(() => {
-    const row = document.querySelectorAll('.source-row')[900];
-    window.scrollBy(0, row.getBoundingClientRect().top - 100);
-  });
-  await frame.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))))));
-  const readAnchor = async target => target.evaluate(() => {
-    const y = document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2;
-    const row = document.elementFromPoint(innerWidth / 4, y)?.closest('.source-row');
-    return row ? { line: Number(row.querySelector('.source-number').textContent), offset: y - row.getBoundingClientRect().top } : null;
-  });
-  const anchor = await readAnchor(frame);
-  assert(anchor?.line > 400, 'The saved reading anchor must be beyond the first Source batch.');
-  frame = await reloadPreview(frame);
-  await expect(frame.locator('#status')).toHaveText('Comparison ready', { timeout: 15000 });
-  const restoredAnchor = await readAnchor(frame);
-  assert.equal(restoredAnchor?.line, anchor.line, 'Reload must restore the same logical visible line.');
-  assert(Math.abs(restoredAnchor.offset - anchor.offset) < 3, 'Reload must restore the offset within the logical row.');
-  record('Verified webview reload restores a deep logical Source reading anchor beyond the initial batch');
   const tableWorkload = await request({ op: 'large' });
   frame = await comparisonFrame();
   await expect(frame.locator('#comparison')).toContainText('Row 0');
@@ -495,6 +493,37 @@ async function verify() {
   frame = await comparisonFrame();
   await measureWorkload(frame, workload, 'code');
   record('Five measured 50000-line code refreshes finish correctly with bounded observed UI frame gaps');
+  const codePreview = await request({ op: 'active-label' });
+  await frame.getByRole('button', { name: 'Open live Source diff', exact: true }).click();
+  const nativeCode = await request({ op: 'active-diff' });
+  assert.equal(nativeCode.pairTabs, 1);
+  assert.match(await request({ op: 'live-position', line: 39999 }), /line39996/);
+  const visibleLine = () => page.locator('.editor-group-container.active .view-line').filter({ hasText: 'line39996' }).first();
+  await expect(visibleLine()).toBeVisible();
+  const sourceTrials = [];
+  for (let trial = 0; trial < 5; trial++) {
+    await page.getByRole('tab', { name: codePreview, exact: false }).click();
+    frame = await comparisonFrame();
+    await expect(frame.locator('#status')).toHaveText('Comparison ready');
+    await expect(frame.locator('.source-row')).toHaveCount(0);
+    const started = performance.now();
+    await frame.getByRole('button', { name: 'Open live Source diff', exact: true }).click();
+    await expect(visibleLine()).toBeVisible();
+    const elapsedMs = performance.now() - started;
+    const source = await request({ op: 'active-diff' });
+    assert.deepEqual(source.uris, nativeCode.uris);
+    assert.deepEqual(source.hashes, nativeCode.hashes);
+    assert.equal(source.pairTabs, 1);
+    assert(source.visibleRanges.some(range => range.start <= 39999 && range.end >= 39999));
+    sourceTrials.push({ elapsedMs });
+  }
+  await writeFile(path.join(output, 'native-source.json'), JSON.stringify({ packageSha256, version: runtime.version,
+    line: 39999, workload, trials: sourceTrials,
+    method: 'Five warm returns from the captured preview to the existing original native diff near line 40000 of the 50000-line code fixture. Automation click to visible native line, includes automation overhead. Original URI pair, text hashes, one diff tab and visible range asserted. No process memory, pixel offset or user percentile claim.' }, null, 2));
+  await page.getByRole('tab', { name: codePreview, exact: false }).click();
+  frame = await comparisonFrame();
+  await expect(frame.locator('#status')).toHaveText('Comparison ready');
+  record('Five native Source returns reuse the same live pair and preserve visible line 40000 without Source DOM');
   const admittedContent = await frame.locator('#comparison').textContent();
   const admittedTimestamp = await frame.locator('#snapshot-label').textContent();
   const oversized = await request({ op: 'oversized' });
