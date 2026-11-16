@@ -32,7 +32,7 @@ const outputName = process.env.MARKDOWN_DIFF_IDE_ARTIFACT_NAME || (scenario === 
 const output = path.join(repo, 'artifacts', path.basename(outputName));
 for (const name of ['workspace', 'profile/User', 'extensions', 'shared', 'crashes', 'driver']) await mkdir(path.join(root, name), { recursive: true });
 await mkdir(output, { recursive: true });
-await Promise.all(['results.json', 'failure.png'].map(name => rm(path.join(output, name), { force: true })));
+await Promise.all(['results.json', 'accessibility.json', 'contrast.json', 'failure.png'].map(name => rm(path.join(output, name), { force: true })));
 await writeFile(path.join(root, 'driver/package.json'), JSON.stringify({ name: 'markdown-diff-acceptance-driver', publisher: 'verification', version: '0.0.0', engines: { vscode: '^1.85.0' } }));
 const contrastTexts = contrastFixture();
 const intro = '# Plan\n\n| Task | Status |\n| --- | --- |\n| Test | Ready |\n\nKeep **format**.\n\n![Blocked image](https://example.invalid/acceptance.png)\n';
@@ -443,10 +443,10 @@ async function verify() {
   await expect(frame.locator('#comparison')).toHaveAttribute('aria-busy', 'false');
   await expect(frame.locator('#snapshot-label')).toContainText('Snapshot captured');
   record('Hide/reveal and actual webview reload restore the captured Rendered comparison');
-  await audit(frame, 'rendered-reloaded');
   await request({ op: 'reading-layout' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect.poll(() => frame.locator('.document-cell pre').first().evaluate(pre => pre.scrollWidth <= pre.clientWidth)).toBe(true);
+  await audit(frame, 'rendered-reloaded');
   const themes = await request({ op: 'themes' });
   assert(themes.some(theme => theme.uiTheme === 'hc-black') && themes.some(theme => theme.uiTheme === 'hc-light'), 'Both native high-contrast themes must be installed.');
   const contrastRecords = [];
