@@ -8,11 +8,14 @@ import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+
+const { fixture: contrastFixture, sampleContrast } = createRequire(import.meta.url)('../test/helpers/vscode-contrast.cjs');
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const manifest = JSON.parse(await readFile(path.join(repo, 'vscode/package.json'), 'utf8'));
 const harnessHashes = {};
-for (const name of ['scripts/test-vscode-ide.mjs', 'test/vscode-ide/driver.cjs']) harnessHashes[name] = createHash('sha256').update(await readFile(path.join(repo, name))).digest('hex');
+for (const name of ['scripts/test-vscode-ide.mjs', 'test/vscode-ide/driver.cjs', 'test/helpers/vscode-contrast.cjs']) harnessHashes[name] = createHash('sha256').update(await readFile(path.join(repo, name))).digest('hex');
 const packagePath = process.argv[2];
 const scenario = process.env.MARKDOWN_DIFF_IDE_SCENARIO || 'full';
 assert(['full', 'restricted', 'virtual'].includes(scenario), 'Unknown IDE acceptance scenario.');
@@ -31,8 +34,10 @@ for (const name of ['workspace', 'profile/User', 'extensions', 'shared', 'crashe
 await mkdir(output, { recursive: true });
 await Promise.all(['results.json', 'failure.png'].map(name => rm(path.join(output, name), { force: true })));
 await writeFile(path.join(root, 'driver/package.json'), JSON.stringify({ name: 'markdown-diff-acceptance-driver', publisher: 'verification', version: '0.0.0', engines: { vscode: '^1.85.0' } }));
-const before = '# Plan\n\n| Task | Status |\n| --- | --- |\n| Test | Ready |\n\nKeep **format**.\n\n![Blocked image](https://example.invalid/acceptance.png)\n';
-const after = before.replace('Ready', 'Done').replace('**format**', '*format*') + '\n<script>globalThis.__markdownAcceptanceInjected = true</script>\n\n[Unsafe link](command:workbench.action.closeWindow)\n';
+const contrastTexts = contrastFixture();
+const intro = '# Plan\n\n| Task | Status |\n| --- | --- |\n| Test | Ready |\n\nKeep **format**.\n\n![Blocked image](https://example.invalid/acceptance.png)\n';
+const before = intro + '\n' + contrastTexts.before;
+const after = intro.replace('Ready', 'Done').replace('**format**', '*format*') + '\n' + contrastTexts.after + '\n<script>globalThis.__markdownAcceptanceInjected = true</script>\n\n[Unsafe link](command:workbench.action.closeWindow)\n';
 await Promise.all(['before.md', 'tracked.md'].map(name => writeFile(path.join(root, 'workspace', name), before)));
 await writeFile(path.join(root, 'workspace', 'after.md'), after);
 const git = (...args) => execFileSync('git', args, { cwd: path.join(root, 'workspace'), encoding: 'utf8' });
@@ -352,7 +357,7 @@ async function verify() {
   assert.equal(await frame.evaluate(() => globalThis.__markdownAcceptanceInjected), undefined);
   await expect(frame.getByRole('link', { name: 'Unsafe link' })).toHaveCount(0);
   await expect(frame.locator('#comparison img')).toHaveCount(0);
-  await expect(frame.locator('.image-placeholder')).toHaveCount(2);
+  await expect(frame.locator('.image-placeholder')).toHaveCount(4);
   assert.deepEqual(imageRequests, []);
   record('Real webview blocks unsafe Markdown and image requests');
   if (scenario === 'full') {
@@ -436,13 +441,33 @@ async function verify() {
   await expect(frame.locator('#snapshot-label')).toContainText('Snapshot captured');
   record('Hide/reveal and actual webview reload restore the captured Rendered comparison');
   await audit(frame, 'rendered-reloaded');
-  for (const [name, theme] of [['dark', 'Default Dark Modern'], ['light', 'Default Light Modern'], ['high-contrast', 'Default High Contrast'], ['high-contrast-light', 'Default High Contrast Light']]) {
-    await request({ op: 'theme', name: theme });
-    await expect(frame.locator('body')).toHaveClass(new RegExp(name === 'high-contrast' ? 'vscode-high-contrast' : `vscode-${name}`));
-    await frame.locator('body').screenshot({ path: path.join(output, `${name}.png`) });
-    await audit(frame, name);
+  const themes = await request({ op: 'themes' });
+  assert(themes.some(theme => theme.uiTheme === 'hc-black') && themes.some(theme => theme.uiTheme === 'hc-light'), 'Both native high-contrast themes must be installed.');
+  const contrastRecords = [];
+  for (const theme of themes) {
+    await request({ op: 'theme', name: theme.id });
+    await expect(frame.locator('body')).toHaveAttribute('data-vscode-theme-id', theme.id);
+    await frame.locator('.document-cell pre').first().scrollIntoViewIfNeeded();
+    await frame.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(frame.locator('#notice')).toContainText('A table with merged cells');
+    const contrast = await frame.evaluate(sampleContrast);
+    for (const kind of ['add', 'remove']) {
+      assert(contrast.samples.some(sample => sample.code && sample.edit === kind), `Missing inline ${kind} code contrast in ${theme.id}.`);
+      assert(contrast.samples.some(sample => sample.code && sample.change === kind), `Missing whole-block ${kind} code contrast in ${theme.id}.`);
+    }
+    assert(contrast.samples.some(sample => sample.code && sample.quote && !sample.edit), `Missing quoted code contrast in ${theme.id}.`);
+    assert(contrast.samples.some(sample => sample.tag === 'BUTTON' && sample.text === 'Next'), `Missing enabled pagination contrast in ${theme.id}.`);
+    contrastRecords.push({ theme, ...contrast });
+    await writeFile(path.join(output, 'contrast.json'), JSON.stringify(contrastRecords, null, 2));
+    assert.deepEqual(contrast.failures, [], `Text contrast in ${theme.id}: ${JSON.stringify(contrast.failures)}`);
+    const name = theme.id.replace(/[^a-z0-9]+/gi, '-');
+    await frame.locator('.document-cell pre').first().screenshot({ path: path.join(output, `${name}-code.png`) });
+    await audit(frame, theme.id);
   }
-  record('All four native themes and reloaded Rendered view pass automated WCAG checks');
+  await request({ op: 'theme', name: themes.find(theme => theme.uiTheme === 'hc-light').id });
+  await expect(frame.locator('body')).toHaveClass(/vscode-high-contrast-light/);
+  await frame.evaluate(() => window.scrollTo(0, 0));
+  record('Every installed native theme passes code/diff text contrast and automated WCAG checks, with its exact theme ID confirmed');
   await request({ op: 'reading-layout' });
   await page.setViewportSize({ width: 1000, height: 700 });
   await request({ op: 'zoom', level: Math.log(2) / Math.log(1.2) });
@@ -485,6 +510,15 @@ async function verify() {
   await frame.getByRole('button', { name: /Refresh/i }).click();
   await expect(frame.getByRole('alert')).toContainText(/previous snapshot/i);
   await expect(frame.locator('#comparison')).toContainText('REFRESHED_ONLY');
+  for (const theme of themes) {
+    await request({ op: 'theme', name: theme.id });
+    await expect(frame.locator('body')).toHaveAttribute('data-vscode-theme-id', theme.id);
+    const contrast = await frame.evaluate(sampleContrast);
+    contrastRecords.push({ theme, state: 'comparison-error', ...contrast });
+    await writeFile(path.join(output, 'contrast.json'), JSON.stringify(contrastRecords, null, 2));
+    assert.deepEqual(contrast.failures, [], `Error-state text contrast in ${theme.id}: ${JSON.stringify(contrast.failures)}`);
+  }
+  record('Recovery notices and the retained comparison stay readable across every installed native theme');
   const failedPreviewLabel = await request({ op: 'hide' });
   await page.getByRole('tab', { name: failedPreviewLabel, exact: false }).click();
   frame = await comparisonFrame();

@@ -112,6 +112,7 @@ exports.run = async function () {
       await replace(right, `${'<blockquote>'.repeat(120)}Too deeply nested${'</blockquote>'.repeat(120)}`);
       return true;
     }
+    if (request.op === 'themes') return vscode.extensions.all.flatMap(extension => (extension.packageJSON.contributes?.themes || []).map(theme => ({ id: theme.id || theme.label, uiTheme: theme.uiTheme, extension: extension.id })));
     if (request.op === 'theme') {
       await vscode.workspace.getConfiguration('workbench').update('colorTheme', request.name, vscode.ConfigurationTarget.Global);
       return request.name;

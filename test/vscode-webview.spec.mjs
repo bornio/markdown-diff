@@ -1,11 +1,12 @@
 import { chromium, test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { document, extensionHost } from './helpers/vscode-host.mjs';
+import { fixture, sampleContrast } from './helpers/vscode-contrast.cjs';
 
 const before = '# Plan\n\n| Item | State |\n| --- | --- |\n| Build | Planned |\n\nA **strong** word.\n\n![Old image](https://example.com/old.png)\n\n[Guide](https://example.com/guide) [Relative](next.md) [Command](command:workbench.action.closeWindow)\n';
 const after = before.replace('Planned', 'Done').replace('**strong**', '*strong*').replace('Old image', 'New image').replace('old.png', 'new.png');
 
-async function openPreview(page, texts = [before, after], ready = true, { allowImages = false } = {}) {
+async function openPreview(page, texts = [before, after], ready = true, { allowImages = false, theme } = {}) {
   let capture = 0;
   const documents = [document('before.md', texts[0]), document('after.md', texts[1], { isDirty: true, version: 2 })];
   const host = extensionHost(...documents, { now: () => Date.UTC(2025, 0, 1, 0, 0, capture++) });
@@ -14,6 +15,7 @@ async function openPreview(page, texts = [before, after], ready = true, { allowI
   const state = panel.messages.findLast(message => message.type === 'state');
   await page.route('https://assets.test/**', async (route) => {
     const filename = new URL(route.request().url()).pathname.slice(1);
+    if (filename === 'vscode-themes.css') return route.fulfill({ body: await readFile(new URL('./fixtures/vscode-themes.css', import.meta.url)), contentType: 'text/css' });
     if (!['webview.js', 'webview.css'].includes(filename)) return route.abort();
     await route.fulfill({ body: await readFile(new URL(`../vscode/dist/${filename}`, import.meta.url)), contentType: filename.endsWith('css') ? 'text/css' : 'text/javascript' });
   });
@@ -40,7 +42,11 @@ async function openPreview(page, texts = [before, after], ready = true, { allowI
       },
     });
   });
-  await page.route('https://preview.test/', (route) => route.fulfill({ body: allowImages ? panel.webview.html.replace("img-src 'none'", 'img-src https:') : panel.webview.html, contentType: 'text/html' }));
+  await page.route('https://preview.test/', (route) => {
+    let html = allowImages ? panel.webview.html.replace("img-src 'none'", 'img-src https:') : panel.webview.html;
+    if (theme) html = html.replace('<html lang="en">', `<html lang="en" data-vscode-theme-id="${theme.id}">`).replace('<body>', `<body class="${theme.kind}">`).replace('<link rel="stylesheet"', '<link rel="stylesheet" href="https://assets.test/vscode-themes.css"><link rel="stylesheet"');
+    return route.fulfill({ body: html, contentType: 'text/html' });
+  });
   await page.goto('https://preview.test/');
   if (ready) await expect(page.locator('#status')).toHaveText('Comparison ready');
   if (ready) await page.evaluate(() => window.hostSettled);
@@ -49,6 +55,33 @@ async function openPreview(page, texts = [before, after], ready = true, { allowI
     await panel.receive({ type: 'refresh' });
   };
   return { host, panel, state, refresh };
+}
+
+for (const theme of [
+  { id: 'Default High Contrast Light', kind: 'vscode-high-contrast-light' },
+  { id: 'Quiet Light', kind: 'vscode-light' },
+  { id: 'Solarized Light', kind: 'vscode-light' },
+  { id: 'Abyss', kind: 'vscode-dark' },
+]) {
+  test(`native ${theme.id} styles keep rendered text and enabled pagination readable`, async ({ page }) => {
+    const texts = fixture();
+    await openPreview(page, [texts.before, texts.after], true, { theme });
+    await expect(page.locator('#notice')).toContainText('A table with merged cells');
+    const next = page.getByRole('button', { name: 'Next', exact: true });
+    await expect(next).toBeEnabled();
+    const { samples, failures } = await page.evaluate(sampleContrast);
+    expect(samples.some(sample => sample.code && !sample.quote && !sample.edit && !sample.change)).toBe(true);
+    for (const edit of ['add', 'remove']) {
+      expect(samples.some(sample => sample.code && sample.edit === edit)).toBe(true);
+      expect(samples.some(sample => sample.code && sample.change === edit)).toBe(true);
+    }
+    expect(samples.some(sample => sample.code && sample.quote)).toBe(true);
+    expect(samples.some(sample => sample.text === 'Next')).toBe(true);
+    expect(failures.length, JSON.stringify(failures.slice(0, 3), null, 2)).toBe(0);
+    await next.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('status').filter({ hasText: 'Rows 101' })).toContainText('Rows 101');
+  });
 }
 
 test('the bundled renderer keeps image and link policies while Source opens the original native pair', async ({ page }) => {
