@@ -64,24 +64,38 @@ exports.run = async function () {
     return documents.map(document => ({ uri: document.uri.toString(), text: document.getText(), dirty: document.isDirty, preview: wasPreview }));
   }
 
+  async function nativeDiffEditor() {
+    const current = () => {
+      const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+      const editor = vscode.window.activeTextEditor;
+      if (!(input instanceof vscode.TabInputTextDiff) || !editor || !editor.visibleRanges.length) return null;
+      return [input.original, input.modified].some(uri => uri.toString() === editor.document.uri.toString()) ? { input, editor } : null;
+    };
+    const deadline = Date.now() + 10000;
+    let source = current();
+    while (!source && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 25));
+      source = current();
+    }
+    assert(source, 'The native diff editor must be visible and ready for the selected URI pair.');
+    return source;
+  }
+
   async function act(request) {
     if (request.op === 'activation-status') return extension.isActive;
     if (request.op === 'active-label') return vscode.window.tabGroups.activeTabGroup.activeTab.label;
     if (request.op === 'active-diff') {
-      const deadline = Date.now() + 10000;
-      while (!(vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTextDiff) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
-      const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
-      assert(input instanceof vscode.TabInputTextDiff);
+      const { input, editor } = await nativeDiffEditor();
       const documents = await Promise.all([input.original, input.modified].map(uri => vscode.workspace.openTextDocument(uri)));
       return {
         uris: [input.original.toString(), input.modified.toString()],
         hashes: documents.map(document => createHash('sha256').update(document.getText()).digest('hex')),
         pairTabs: vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.input instanceof vscode.TabInputTextDiff && tab.input.original.toString() === input.original.toString() && tab.input.modified.toString() === input.modified.toString()).length,
-        visibleRanges: vscode.window.activeTextEditor?.visibleRanges.map(range => ({ start: range.start.line, end: range.end.line })),
+        visibleRanges: editor.visibleRanges.map(range => ({ start: range.start.line, end: range.end.line })),
       };
     }
     if (request.op === 'live-position') {
-      const editor = vscode.window.activeTextEditor;
+      const { editor } = await nativeDiffEditor();
       editor.selection = new vscode.Selection(request.line, 0, request.line, 0);
       editor.revealRange(new vscode.Range(request.line, 0, request.line, 0), vscode.TextEditorRevealType.InCenter);
       return editor.document.lineAt(request.line).text;
