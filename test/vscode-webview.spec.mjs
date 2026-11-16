@@ -113,6 +113,34 @@ test('the bundled renderer keeps image and link policies while Source opens the 
   expect(failures).toEqual([]);
 });
 
+test('task checkboxes name their own rich text without nested task labels and preserve selection', async ({ page }) => {
+  const text = '- [ ] Tight **parent** with `code`\n  1. [x] Tight child\n  2. [ ] Second child\n\n---\n\n- [x] Loose *parent*\n\n  Context paragraph.\n\n  - [ ] Loose child\n';
+  const withUnnamedCheckbox = text + '\n<input type="checkbox">\n';
+  await openPreview(page, [withUnnamedCheckbox, withUnnamedCheckbox.replace('- [ ] Tight', '- [x] Tight').replace('- [ ] Loose child', '- [x] Loose child')]);
+  const names = ['Tight parent with code', 'Tight child', 'Second child', 'Loose parent', 'Loose child', 'Task item'];
+  for (const side of ['before', 'after']) {
+    const cells = page.locator(`.document-cell[data-side=${side}]`);
+    const checkboxes = cells.getByRole('checkbox');
+    await expect(checkboxes).toHaveCount(names.length);
+    for (let i = 0; i < names.length; i++) {
+      await expect(checkboxes.nth(i)).toHaveAccessibleName(names[i]);
+      await expect(checkboxes.nth(i)).toBeDisabled();
+      await expect(checkboxes.nth(i)).toBeChecked({ checked: i === 1 || i === 3 || side === 'after' && (i === 0 || i === 4) });
+    }
+    await expect(cells.locator('strong')).toHaveText('parent');
+    await expect(cells.locator('code')).toHaveText('code');
+    await expect(cells.locator('em')).toHaveText('parent');
+  }
+  const selection = await page.locator('.document-cell[data-side=before] li').first().evaluate(item => {
+    const range = document.createRange();
+    range.selectNodeContents(item);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    return getSelection().toString();
+  });
+  for (const name of names.slice(0, 3)) expect(selection).toContain(name);
+});
+
 test('read failures preserve the displayed snapshot and Refresh stays bound to the host', async ({ page }) => {
   const { host, panel } = await openPreview(page);
   host.documents.delete([...host.documents.keys()][0]);
