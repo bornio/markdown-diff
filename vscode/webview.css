@@ -94,7 +94,17 @@ body { padding:0; color:var(--text); }
 .document-cell a:focus-visible { outline-offset:0; }
 .document-cell input[type=checkbox]:checked { border-color:var(--ink); }
 .document-cell input[type=checkbox]:checked:after { border-color:var(--vscode-checkbox-foreground,var(--ink)); }
-.image-placeholder { display:inline-block; padding:10px 12px; border:1px dashed var(--border-strong); border-radius:4px; color:var(--muted); background:var(--surface); font-size:12px; }
+.image-placeholder {
+  display:inline;
+  padding:2px 5px;
+  border:1px dashed var(--border-strong);
+  border-radius:4px;
+  color:var(--muted);
+  background:var(--surface);
+  font-size:12px;
+  -webkit-box-decoration-break:clone;
+  box-decoration-break:clone;
+}
 .image-placeholder:is([data-change=remove],[data-edit=remove]) { outline:2px solid var(--remove-marker); }
 .image-placeholder:is([data-change=add],[data-edit=add]) { outline:2px solid var(--add-marker); }
 .document-cell a[aria-disabled=true] { color:var(--muted); text-decoration:underline dotted; cursor:default; }

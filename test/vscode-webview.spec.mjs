@@ -1,4 +1,5 @@
 import { chromium, test, expect } from '@playwright/test';
+import axe from 'axe-core';
 import { readFile } from 'node:fs/promises';
 import { document, extensionHost } from './helpers/vscode-host.mjs';
 import { fixture, sampleContrast, interactiveContrast } from './helpers/vscode-contrast.cjs';
@@ -184,6 +185,29 @@ test('task names include image descriptions but exclude following code and quote
     await expect(cells.locator('.image-placeholder')).toHaveCount(3);
   }
   expect(requests).toEqual([]);
+});
+
+test('formatted image-task notices wrap without obscuring text in a narrow preview', async ({ page }) => {
+  await page.setViewportSize({ width: 442, height: 500 });
+  const text = '- [ ] **![Deploy release](https://example.invalid/deploy.png)**';
+  await openPreview(page, [text, text + '\n\nA changed ending.'], true, { theme: { id: 'Default High Contrast Light', kind: 'vscode-high-contrast-light' } });
+  await expect(page.getByRole('checkbox', { name: 'Deploy release', exact: true })).toHaveCount(2);
+  await page.evaluate(axe.source);
+  const report = await page.evaluate(async () => {
+    const result = await window.axe.run(document, { runOnly: { type: 'rule', values: ['color-contrast'] }, preload: false });
+    return { violations: result.violations, incomplete: result.incomplete };
+  });
+  expect(report.violations).toEqual([]);
+  expect(report.incomplete).toEqual([]);
+  const selection = await page.locator('.document-cell[data-side=before] li').evaluate(item => {
+    const range = document.createRange();
+    range.selectNodeContents(item);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    return getSelection().toString();
+  });
+  expect(selection).toContain('Image not loaded · Deploy release');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
 test('read failures preserve the displayed snapshot and Refresh stays bound to the host', async ({ page }) => {
