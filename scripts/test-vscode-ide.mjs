@@ -441,6 +441,9 @@ async function verify() {
   await expect(frame.locator('#snapshot-label')).toContainText('Snapshot captured');
   record('Hide/reveal and actual webview reload restore the captured Rendered comparison');
   await audit(frame, 'rendered-reloaded');
+  await request({ op: 'reading-layout' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect.poll(() => frame.locator('.document-cell pre').first().evaluate(pre => pre.scrollWidth <= pre.clientWidth)).toBe(true);
   const themes = await request({ op: 'themes' });
   assert(themes.some(theme => theme.uiTheme === 'hc-black') && themes.some(theme => theme.uiTheme === 'hc-light'), 'Both native high-contrast themes must be installed.');
   const contrastRecords = [];
@@ -460,10 +463,10 @@ async function verify() {
     contrastRecords.push({ theme, ...contrast });
     await writeFile(path.join(output, 'contrast.json'), JSON.stringify(contrastRecords, null, 2));
     assert.deepEqual(contrast.failures, [], `Text contrast in ${theme.id}: ${JSON.stringify(contrast.failures)}`);
+    await audit(frame, theme.id);
     const name = theme.id.replace(/[^a-z0-9]+/gi, '-');
     await frame.locator('.document-cell pre').first().screenshot({ path: path.join(output, `${name}-code.png`) });
     await page.screenshot({ path: path.join(output, `${name}.png`) });
-    await audit(frame, theme.id);
   }
   await request({ op: 'theme', name: themes.find(theme => theme.uiTheme === 'hc-light').id });
   await expect(frame.locator('body')).toHaveClass(/vscode-high-contrast-light/);
@@ -477,6 +480,7 @@ async function verify() {
   const narrowViewport = await frame.evaluate(() => ({ width: innerWidth, height: innerHeight, devicePixelRatio }));
   assert(narrowViewport.width >= 300 && narrowViewport.width <= 600, `Expected a narrow readable editor column, got ${narrowViewport.width}px.`);
   assert(await frame.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'The narrow zoomed preview must not overflow horizontally.');
+  await frame.locator('#comparison h1').first().scrollIntoViewIfNeeded();
   await expect(frame.locator('#comparison h1').first()).toBeInViewport({ ratio: 1 });
   await audit(frame, 'narrow-200-percent');
   await page.screenshot({ path: path.join(output, 'narrow-zoom.png') });

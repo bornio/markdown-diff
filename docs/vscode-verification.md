@@ -1,5 +1,7 @@
 # VS Code extension acceptance, 2026-11-16
 
+The [contrast and accessibility follow-up](vscode-contrast.md) supersedes this record's color coverage. This document retains the pre-correction artifact and its performance measurements.
+
 This record covers a captured Rendered preview and live native Source. VS Code selects the original ordered URI pair and owns editing. Source opens that live pair. Refresh captures its current text for the preview.
 
 ## Artifact identity
@@ -80,7 +82,7 @@ To Source ends when the actual native line is visible. Back to preview ends at C
 
 A differential 900-row fixture preserved long selection, Select All and semantic ARIA snapshots against baseline. After continuously visiting its content in forced-accessibility Chrome mode, the normalized native Chromium accessibility trees also matched exactly. Distant forward/backward Tab navigation passed. Before visiting all content, both versions expose viewport-dependent native snapshots; grouping changes the exposure of implicit offscreen paragraph containers. This is a browser-level parity check, not a manual screen-reader study or universal conformance claim.
 
-The 18 installed axe states have zero WCAG-tagged violations and zero incomplete checks, both asserted. They cover four native themes, native 200 percent zoom and recovery, plus capability-mode content and recovery. The narrow screenshot supports explicit viewport assertions, including a fully visible first heading. Refresh keeps focus; persistent live regions are not rewritten unnecessarily. Read and presentation failures use alerts; source staleness and precision warnings use polite status regions.
+The 18 historical installed axe states have zero WCAG-tagged violations and zero incomplete checks, both asserted. They cover four native theme kinds, native 200 percent zoom and recovery, plus capability-mode content and recovery. Their fixture omitted code blocks and task lists, so these passes did not establish code contrast or checkbox labelling. The follow-up expands both fixtures and confirms exact theme IDs. The narrow screenshot supports explicit viewport assertions, including a fully visible first heading. Refresh keeps focus; persistent live regions are not rewritten unnecessarily. Read and presentation failures use alerts; source staleness and precision warnings use polite status regions.
 
 Installed runs assert no unexpected preview-associated console, page or content-policy diagnostics. The isolated runner disables Chromium occluded-window throttling and requires a visible frame; product timeouts and rendering code are unchanged by that test flag.
 
