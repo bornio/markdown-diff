@@ -17,6 +17,11 @@ const packagePath = process.argv[2];
 const scenario = process.env.MARKDOWN_DIFF_IDE_SCENARIO || 'full';
 assert(['full', 'restricted', 'virtual'].includes(scenario), 'Unknown IDE acceptance scenario.');
 const packageSha256 = packagePath ? createHash('sha256').update(await readFile(packagePath)).digest('hex') : null;
+const expectedRuntimeHashes = {};
+for (const name of ['extension.cjs', 'dist/webview.js', 'dist/webview.css']) {
+  const bytes = packagePath ? execFileSync('unzip', ['-p', path.resolve(packagePath), `extension/${name}`]) : await readFile(path.join(repo, 'vscode', name));
+  expectedRuntimeHashes[name] = createHash('sha256').update(bytes).digest('hex');
+}
 const executable = process.env.VSCODE_EXECUTABLE_PATH || '/Applications/Visual Studio Code.app/Contents/MacOS/Code';
 const root = await mkdtemp(path.join(os.tmpdir(), 'markdown-diff-ide-'));
 console.log(`Isolated VS Code profile ${root}`);
@@ -76,6 +81,8 @@ const performanceTrials = [];
 const performanceProfiles = [];
 let providerReadFailures = 0;
 const imageRequests = [];
+const previewDiagnostics = [];
+const previewLocation = value => value?.includes('vscode-webview:') || value?.includes('/dist/webview.js');
 const record = name => { checks.push(name); console.log(`PASS ${name}`); };
 async function json(file) { try { return JSON.parse(await readFile(file, 'utf8')); } catch { return null; } }
 let requestId = 0;
@@ -109,6 +116,27 @@ async function reloadPreview(frame) {
   }, { timeout: 30000 }).toBe(true);
   return frame;
 }
+async function verifyProviderRecovery() {
+  await request({ op: 'provider' });
+  let frame = await comparisonFrame();
+  await expect(frame.locator('#comparison')).toContainText('Provider changed');
+  await expect(frame.locator('#status')).toHaveText('Comparison ready');
+  await expect(frame.locator('#snapshot-label')).toContainText('Snapshot captured');
+  const timestamp = await frame.locator('#snapshot-label').textContent();
+  await request({ op: 'provider-failure' });
+  frame = await comparisonFrame();
+  await frame.getByRole('button', { name: /Refresh/i }).click();
+  await expect(frame.getByRole('alert')).toContainText('Refresh failed');
+  await expect(frame.locator('#comparison')).toContainText('Provider changed');
+  await expect(frame.locator('#snapshot-label')).toHaveText(timestamp);
+  providerReadFailures = (await request({ op: 'provider-status' })).readFailures;
+  assert(providerReadFailures > 0, 'The failing provider must actually have been called.');
+  frame = await reloadPreview(frame);
+  await expect(frame.locator('#comparison')).toContainText('Provider changed');
+  await expect(frame.locator('#snapshot-label')).toHaveText(timestamp);
+  await expect(frame.getByRole('alert')).toContainText(/previous snapshot/i);
+  return frame;
+}
 async function audit(frame, name) {
   await frame.evaluate(axe.source);
   const result = await frame.evaluate(async () => {
@@ -124,14 +152,17 @@ async function audit(frame, name) {
   accessibility.push({ name, viewport, ...result });
   await writeFile(path.join(output, 'accessibility.json'), JSON.stringify(accessibility, null, 2));
   assert.deepEqual(result.violations, [], `Accessibility violations in ${name}: ${JSON.stringify(result.violations)}`);
+  assert.deepEqual(result.incomplete, [], `Incomplete accessibility checks in ${name}: ${JSON.stringify(result.incomplete)}`);
 }
 async function finish(runtime) {
   for (const [name, hash] of Object.entries(harnessHashes)) assert.equal(createHash('sha256').update(await readFile(path.join(repo, name))).digest('hex'), hash, 'The harness must not change during acceptance.');
   assert.deepEqual(imageRequests, [], 'No document image request may occur during any accepted state.');
-  await writeFile(path.join(output, 'results.json'), JSON.stringify({ success: true, testedAt: new Date().toISOString(), ...runtime, scenario, installedPackage: packagePath ? path.resolve(packagePath) : null, packageSha256, harnessHashes, checks, accessibility, performanceTrials, performanceProfiles, providerReadFailures, logicalCores: os.availableParallelism(), loadAverage: os.loadavg(), temporaryProfile: root }, null, 2));
+  assert.deepEqual(runtime.runtimeHashes, expectedRuntimeHashes, 'Loaded runtime bytes must match the requested package or development files.');
+  assert.deepEqual(previewDiagnostics, [], 'Preview console and content-policy errors must not be ignored.');
+  await writeFile(path.join(output, 'results.json'), JSON.stringify({ success: true, testedAt: new Date().toISOString(), ...runtime, scenario, installedPackage: packagePath ? path.resolve(packagePath) : null, packageSha256, expectedRuntimeHashes, harnessHashes, checks, accessibility, performanceTrials, performanceProfiles, providerReadFailures, previewDiagnostics, logicalCores: os.availableParallelism(), loadAverage: os.loadavg(), temporaryProfile: root }, null, 2));
   await request({ op: 'finish' });
 }
-async function measureRefresh(frame, profiling = false) {
+async function captureRefresh(frame, profiling = false) {
   await frame.evaluate(profiling => {
     const region = document.querySelector('#comparison');
     const probe = { started: false, done: false, clickedAt: null, gaps: [], longTasks: [] };
@@ -187,12 +218,19 @@ async function measureRefresh(frame, profiling = false) {
   await frame.getByRole('button', { name: /Refresh/i }).click();
   await expect.poll(() => frame.evaluate(() => globalThis.__markdownAcceptanceProbe.done), { timeout: 15000 }).toBe(true);
   const probe = await frame.evaluate(() => globalThis.__markdownAcceptanceProbe);
-  await expect(frame.locator('#status')).toHaveText('Comparison ready');
-  await expect(frame.locator('#stats')).toHaveText('Lines · 0 added · 0 removed · 1 changed');
+  return probe;
+}
+function checkResponsiveness(probe) {
   assert.equal(probe.visibility, 'visible');
   assert(probe.framesDuringWork > 1, 'The UI must continue presenting frames during the measured work.');
   assert(probe.elapsedMs < 12000, 'The complete warm Refresh must finish within its workload budget.');
   assert(probe.maxFrameGapMs < 250, 'The representative large comparison must not stall UI frames for a quarter second.');
+}
+async function measureRefresh(frame, profiling = false) {
+  const probe = await captureRefresh(frame, profiling);
+  await expect(frame.locator('#status')).toHaveText('Comparison ready');
+  await expect(frame.locator('#stats')).toHaveText('Lines · 0 added · 0 removed · 1 changed');
+  checkResponsiveness(probe);
   return probe;
 }
 async function measureWorkload(frame, workload, name) {
@@ -247,6 +285,12 @@ async function verify() {
   if (scenario === 'restricted') assert.equal(runtime.trusted, false, 'The restricted-mode scenario must actually be untrusted.');
   if (scenario === 'virtual') assert.equal(runtime.virtualWorkspace, true, 'The virtual scenario must actually use a virtual workspace.');
   const page = browser.contexts()[0].pages()[0];
+  page.on('console', message => {
+    if (message.type() === 'error' && (previewLocation(message.location().url) || /Content Security Policy|Refused to (load|execute)/i.test(message.text()))) previewDiagnostics.push({ type: 'console', text: message.text(), location: message.location() });
+  });
+  page.on('pageerror', error => {
+    if (previewLocation(error.stack)) previewDiagnostics.push({ type: 'pageerror', text: error.message, stack: error.stack });
+  });
   page.on('request', request => { if (request.url().includes('acceptance.png')) imageRequests.push(request.url()); });
   const documents = await request({ op: 'manual', invoke: false });
   if (scenario !== 'virtual') assert(documents[1].dirty);
@@ -255,6 +299,7 @@ async function verify() {
   await expect(titleAction).toBeVisible();
   if (scenario === 'full') {
     await request({ op: 'second-group' });
+    await expect(titleAction).toHaveCount(0);
     await sourceGroup.getByRole('tab', { name: 'Markdown acceptance comparison', exact: false }).click();
     await expect(titleAction).toBeVisible();
   }
@@ -273,12 +318,32 @@ async function verify() {
   await expect(frame.locator('.image-placeholder')).toHaveCount(2);
   assert.deepEqual(imageRequests, []);
   record('Real webview blocks unsafe Markdown and image requests');
+  if (scenario === 'full') {
+    const reused = await request({ op: 'reuse-second-group' });
+    assert(reused.targetInitiallySecond, 'The reuse scenario must start in a different active editor group.');
+    assert(reused.previewInTargetGroup && reused.matchingPreviews === 1, `Reusing the pair must reveal its one preview in the selected group: ${JSON.stringify(reused)}`);
+    frame = await comparisonFrame();
+    await expect(frame.locator('#comparison')).toContainText('UNSAVED_ONLY');
+    await request({ op: 'join-groups' });
+    frame = await comparisonFrame();
+    record('Reusing the same pair reveals its single preview in the newly active editor group');
+  }
   await frame.getByRole('button', { name: 'Source', exact: true }).click();
   await expect(frame.locator('#comparison')).toContainText('**format**');
   await expect(frame.locator('#comparison')).toContainText('*format*');
   record('Source retains exact formatting syntax');
   if (scenario !== 'full') {
     await audit(frame, `${scenario}-source`);
+    await request({ op: 'capability-update' });
+    await expect(frame.locator('#comparison')).not.toContainText('CAPABILITY_REFRESH');
+    await frame.getByRole('button', { name: /Refresh/i }).focus();
+    await frame.getByRole('button', { name: /Refresh/i }).press('Enter');
+    await expect(frame.locator('#comparison')).toContainText('CAPABILITY_REFRESH');
+    await expect(frame.getByRole('button', { name: /Refresh/i })).toBeFocused();
+    record('Refresh observes new native/provider text without losing keyboard focus');
+    frame = await verifyProviderRecovery();
+    record('Actual provider failure and verified reload preserve matching content and timestamp');
+    await audit(frame, `${scenario}-recovery`);
     record(scenario === 'restricted' ? 'The installed extension works in actual Restricted Mode' : 'The installed extension works in an actual virtual workspace');
     await finish(runtime);
     return;
@@ -322,7 +387,7 @@ async function verify() {
   assert(narrowViewport.width >= 300 && narrowViewport.width <= 600, `Expected a narrow readable editor column, got ${narrowViewport.width}px.`);
   assert(await frame.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'The narrow zoomed preview must not overflow horizontally.');
   await audit(frame, 'narrow-200-percent');
-  await frame.locator('body').screenshot({ path: path.join(output, 'narrow-zoom.png') });
+  await page.screenshot({ path: path.join(output, 'narrow-zoom.png') });
   await request({ op: 'zoom', level: 0 });
   await page.setViewportSize({ width: 1440, height: 900 });
   record('The installed preview remains usable in a narrow column at 200 percent zoom');
@@ -375,11 +440,47 @@ async function verify() {
   await expect(frame.locator('#comparison')).toContainText('STAGED_ONLY');
   await expect(frame.locator('#comparison')).not.toContainText('WORKTREE_ONLY');
   record('Real Git staged comparison preserves the index baseline');
+  await request({ op: 'reading-state' });
+  frame = await comparisonFrame();
+  await expect(frame.locator('#status')).toHaveText('Comparison ready');
+  await frame.getByRole('button', { name: 'Source', exact: true }).click();
+  while (await frame.locator('.source-row').count() < 1200) {
+    const count = await frame.locator('.source-row').count();
+    await frame.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect.poll(() => frame.locator('.source-row').count()).toBeGreaterThan(count);
+  }
+  await frame.locator('.source-row').nth(900).scrollIntoViewIfNeeded();
+  await frame.evaluate(() => {
+    const row = document.querySelectorAll('.source-row')[900];
+    window.scrollBy(0, row.getBoundingClientRect().top - 100);
+  });
+  await frame.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))))));
+  const readAnchor = async target => target.evaluate(() => {
+    const y = document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2;
+    const row = document.elementFromPoint(innerWidth / 4, y)?.closest('.source-row');
+    return row ? { line: Number(row.querySelector('.source-number').textContent), offset: y - row.getBoundingClientRect().top } : null;
+  });
+  const anchor = await readAnchor(frame);
+  assert(anchor?.line > 400, 'The saved reading anchor must be beyond the first Source batch.');
+  frame = await reloadPreview(frame);
+  await expect(frame.locator('#status')).toHaveText('Comparison ready', { timeout: 15000 });
+  const restoredAnchor = await readAnchor(frame);
+  assert.equal(restoredAnchor?.line, anchor.line, 'Reload must restore the same logical visible line.');
+  assert(Math.abs(restoredAnchor.offset - anchor.offset) < 3, 'Reload must restore the offset within the logical row.');
+  record('Verified webview reload restores a deep logical Source reading anchor beyond the initial batch');
   const tableWorkload = await request({ op: 'large' });
   frame = await comparisonFrame();
   await expect(frame.locator('#comparison')).toContainText('Row 0');
   await expect(frame.locator('#comparison').getByRole('button', { name: /next/i }).first()).toBeVisible();
   record('A 1200-row table uses rendered pagination');
+  for (let pageIndex = 0; pageIndex < 3; pageIndex++) await frame.locator('#comparison').getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(frame.locator('.table-pager [role=status]')).toContainText('Rows 301');
+  await frame.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve)))));
+  frame = await reloadPreview(frame);
+  await expect(frame.locator('#status')).toHaveText('Comparison ready');
+  await expect(frame.locator('.table-pager [role=status]')).toContainText('Rows 301');
+  await expect(frame.locator('#comparison')).toContainText('Row 300');
+  record('Verified webview reload restores a nonzero rendered table page');
   await measureWorkload(frame, tableWorkload, 'table');
   record('Five measured 1200-row table refreshes finish correctly with bounded observed UI frame gaps');
   const proseWorkload = await request({ op: 'prose' });
@@ -390,23 +491,25 @@ async function verify() {
   frame = await comparisonFrame();
   await measureWorkload(frame, workload, 'code');
   record('Five measured 50000-line code refreshes finish correctly with bounded observed UI frame gaps');
-  await request({ op: 'provider' });
-  frame = await comparisonFrame();
-  await expect(frame.locator('#comparison')).toContainText('Provider changed');
-  await request({ op: 'provider-failure' });
-  frame = await comparisonFrame();
-  await frame.getByRole('button', { name: /Refresh/i }).click();
-  await expect(frame.getByRole('alert')).toContainText('Refresh failed');
-  await expect(frame.locator('#comparison')).toContainText('Provider changed');
-  providerReadFailures = (await request({ op: 'provider-status' })).readFailures;
-  assert(providerReadFailures > 0, 'The failing provider must actually have been called.');
-  record('A provider failure preserves the last successful comparison');
+  const admittedContent = await frame.locator('#comparison').textContent();
+  const admittedTimestamp = await frame.locator('#snapshot-label').textContent();
+  const oversized = await request({ op: 'oversized' });
+  assert(oversized.characters < 8000000 && oversized.lines < 200000, 'The stress fixture must pass the coarse input caps.');
+  const stress = await captureRefresh(frame);
+  await expect(frame.getByRole('alert')).toContainText('section is too large');
+  await expect(frame.locator('#comparison')).toHaveText(admittedContent);
+  await expect(frame.locator('#snapshot-label')).toHaveText(admittedTimestamp);
+  checkResponsiveness(stress);
+  await writeFile(path.join(output, 'oversized-section.json'), JSON.stringify({ input: oversized, observation: stress, rejectedBeforePresentation: true }, null, 2));
+  record('An oversized legal-size section is rejected before presentation while the prior view and UI responsiveness remain intact');
+  frame = await verifyProviderRecovery();
+  record('Actual provider failure and verified reload preserve matching content and timestamp');
   assert.equal(await readFile(path.join(root, 'workspace', 'after.md'), 'utf8'), after);
   record('Preview and refresh never write the source file');
   await finish(runtime);
 }
 try { await verify(); } catch (error) {
-  await writeFile(path.join(output, 'results.json'), JSON.stringify({ success: false, testedAt: new Date().toISOString(), packageSha256, checksCompleted: checks, error: error.stack, connectionError, temporaryProfile: root }, null, 2));
+  await writeFile(path.join(output, 'results.json'), JSON.stringify({ success: false, testedAt: new Date().toISOString(), packageSha256, checksCompleted: checks, previewDiagnostics, error: error.stack, connectionError, temporaryProfile: root }, null, 2));
   if (!browser && connectionError) console.error(connectionError);
   for (const context of browser?.contexts() || []) for (const page of context.pages()) {
     await page.screenshot({ path: path.join(output, 'failure.png') }).catch(() => {});

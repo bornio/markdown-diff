@@ -1,67 +1,70 @@
 # VS Code extension verification
 
-This record covers the installable desktop extension that renders an existing Markdown text comparison. The source comparison selects both documents and owns editing. The extension owns a read-only snapshot and explicit Refresh.
+This record covers the read-only snapshot of the native Markdown text comparison. Native VS Code selects the pair and owns editing. The shared engine compares captured text, and explicit Refresh reads the same pair again.
 
-## Artifact and environment
+## Artifact identity
 
-The tested package is `markdown-diff-vscode-0.1.0.vsix`.
+Package `markdown-diff-vscode-0.1.0.vsix`, SHA-256 `83c578a111d56ef26af50d84d6aa35f36ada748105560a27de16cd8cdfc9e7f3`.
 
-SHA-256 `46435e82fb843fa51844eb524315c1aaf28b141068eba1947cef5fa0844860d1`.
+The [structured record](vscode-verification.json) binds source inputs, bundled outputs, archive entries, installed runtime files, and the unchanged acceptance harness. The build hashes inputs before bundling and checks them afterward. Each installed run compares its loaded bytes directly with the requested archive. The recorder refuses stale or inconsistent records and can be rerun with `npm run record:vscode`.
 
-The [structured record](vscode-verification.json) includes the exact runtime and acceptance-harness hashes. Every installed run verifies the loaded extension directory, hashes its host and webview files, and confirms those bytes match the package. The harness must remain unchanged during each run. The installed copy, source bundle, and package agree across the matrix.
+## Installed matrix
 
-The runs used one macOS arm64 host with 10 logical CPU cores. Desktop VS Code 1.146.0 and the declared minimum 1.85.0 each passed 19 acceptance checks against the same package. The minimum build came from Microsoft's update service. Its Microsoft Corporation signature and notarized Gatekeeper assessment passed before execution.
+All runs use the same package on one macOS arm64 host. The minimum application was Microsoft's official signed and notarized build, verified before execution. Each scenario below passed its named checks. Capability runs do not claim every external provider.
 
-Separate 1.146.0 runs passed the four capability checks in actual Restricted Mode with `workspace.isTrusted` false, and in an actual virtual workspace backed by a read-only test filesystem. This proves those scenarios, not every external provider or operating system.
+| Scenario | VS Code | Trusted | Virtual workspace | Checks | Audited states |
+| --- | --- | --- | --- | ---: | ---: |
+| installed | 1.146.0 | true | false | 23 | 7 |
+| minimum | 1.85.0 | true | false | 23 | 7 |
+| restricted | 1.146.0 | false | false | 6 | 2 |
+| virtual | 1.146.0 | true | true | 6 | 2 |
 
-## Correctness and recovery
+The source gates passed 88 Node tests and 31 website browser tests, plus the separately invoked 14 host and 31 bundled browser tests. Some counts overlap. They are not independent totals to add.
 
-The actual IDE checks exercise the editor-title action after switching groups, dirty native editor text, exact Source syntax, fixed-pair Refresh, keyboard focus, non-default Source restoration, a verified new webview JavaScript context, and real Git working-tree and staged inputs.
+## Correctness, recovery and reading state
 
-A one-shot DOM insertion fault in the actual webview must preserve prior content and its timestamp through reload. The bundled browser suite additionally injects immediate, later-frame, alignment, pager, and scrolling faults. It exercises both recreation/failure orders, stale candidate cancellation, empty results, and failed rollback without a retry loop. The host remembers input as successful only after the first view mounts and aligns.
+Installed checks exercise the title action, unsaved text, exact Source syntax, fixed-pair Refresh, keyboard focus, group reuse, real Git pairs, provider failure, and actual webview reload. A DOM insertion fault must keep content and timestamp coherent. Browser checks cover both failure/recreation orders, stale completions, initial and later DOM faults, alignment, paging, cancellation and bounded failed rollback.
 
-A failing provider must actually receive a read attempt. Its failure keeps the previous view. The fixture file remains unchanged, and production host inspection finds no document-write operation. These checks do not pretend to enumerate every filesystem or provider behavior.
+The host remembers the last current input confirmed after initial DOM mounting and alignment. The client owns actual visibility and notice wording. A narrowly crossed native-command re-run can recover an earlier coherent confirmed snapshot. This accepted fallback does not corrupt or write files and is not a claim of atomic pixels across processes.
 
-The current test gates passed 12 host tests, 19 bundled Chrome tests, 80 Node tests in the full website check, and 31 website browser tests. Some host tests are included in the Node total. Do not add these counts as independent coverage.
+Logical reading bookmarks contain a row anchor, offset and page indices, tied to the snapshot ID. They contain no document text. Reload restores deep Source and a nonzero page after mounting the needed frontier and bounded layout settling. User navigation can cancel an automatic jump. Restoration is linear in preceding rows; errors deliberately return to a safe beginning rather than re-enter a faulty page.
 
-## Accessibility and layout
+## Accessibility and diagnostics
 
-Pinned controls use a compact action bar. Provenance and statistics scroll with the document. Persistent notices change their live text only when the message changes. Refresh remains focusable while a new capture supersedes older work.
+The 18 saved axe-core states report zero WCAG-tagged violations and zero incomplete checks, both of which the runner asserts. Full runs include Source, four native themes, native 200 percent zoom and recovery. Capability runs include Source and recovery. Refresh stays focusable, persistent live messages are not needlessly rewritten, and visible/audible side vocabulary agrees. Automated checks and semantic markup are not a manual screen-reader study or universal conformance claim.
 
-Each full installed run audits Source, all four default native themes, native 200 percent zoom in a narrow editor column, and the presentation-error recovery state with axe-core 4.14.0. All seven states in each version reported zero WCAG-tagged violations and zero incomplete checks. Restricted and virtual runs each added a Source audit with the same result. The structured record preserves the measured frame dimensions and scale factors.
-
-The old-version audits found and drove fixes for Source line-number contrast, selected controls, and high-contrast hover states. No rule was disabled to obtain the final result. Keyboard focus and Source-mode reload behavior are separate functional assertions. Automated checks and markup inspection are not a manual screen-reader study or a claim of universal accessibility conformance.
+The runner records preview-associated console, page and content-policy diagnostics separately from main-process logs and fails on unexpected preview errors. Narrow layout also has explicit viewport assertions; its whole-window image is supporting evidence, not a substitute for them.
 
 ## Responsiveness observations
 
-These are medians of five successful warm Refresh trials for each workload and version. Values are milliseconds.
+Each row summarizes five successful warm Refresh trials. Values are milliseconds. A separate profiling trial is excluded from each range and median.
 
 | VS Code | Workload per document | Median wait | Trial range | Largest observed frame gap | Largest observed long task |
 | --- | --- | ---: | ---: | ---: | ---: |
-| 1.146.0 | 1,200-row table | 180.1 | 171.5 to 195.6 | 19.1 | 0.0 |
-| 1.146.0 | 100-section prose | 263.8 | 251.1 to 279.6 | 18.9 | 0.0 |
-| 1.146.0 | 50,000 code lines | 711.7 | 683.5 to 713.5 | 46.7 | 0.0 |
-| 1.85.0 | 1,200-row table | 227.7 | 218.7 to 232.2 | 24.7 | 0.0 |
-| 1.85.0 | 100-section prose | 266.9 | 261.8 to 269.3 | 23.0 | 0.0 |
-| 1.85.0 | 50,000 code lines | 1098.7 | 1079.1 to 1114.7 | 96.3 | 82.0 |
+| 1.146.0 | 1,200-row table | 179.6 | 170.2 to 196.9 | 18.3 | 0.0 |
+| 1.146.0 | 100-section prose | 265.0 | 254.9 to 282.7 | 18.9 | 0.0 |
+| 1.146.0 | 50,000 code lines | 666.1 | 661.7 to 694.6 | 45.5 | 0.0 |
+| 1.85.0 | 1,200-row table | 215.8 | 206.3 to 216.4 | 24.2 | 0.0 |
+| 1.85.0 | 100-section prose | 265.4 | 251.5 to 268.3 | 23.0 | 0.0 |
+| 1.85.0 | 50,000 code lines | 1081.8 | 1075.7 to 1095.9 | 92.4 | 80.0 |
 
-The table inputs total 45,875 bytes, prose inputs 15,174 bytes, and code inputs 7,077,821 bytes. Timing starts in the capture phase of the Refresh click. It ends after successful initial mounting and two animation frames. The interval includes host reads, fresh worker startup, comparison, transfer, and initial DOM construction. It excludes opening the native diff, traversing all later pages, and first file loading. Inputs are already open and cached, as they are for Refresh.
+Timing starts at the capture-phase click and ends after the initial mounted frontier plus two animation frames. It includes cached native reads, worker startup, comparison, transfer and initial DOM construction. It excludes opening the native diff, every later page and first file loading. Every trial validates successful output and one changed source line. Raw records preserve input bytes, host load, actual viewport and observed callbacks.
 
-A separate profiling trial precedes each set and is excluded from its median and range. It captures a real renderer CPU profile and the worker-construction-to-first-message interval. The worker interval includes startup, computation, and transfer, so it is not pure worker CPU time. Code wait is dominated by that round trip. Prose wait includes the deliberately incremental initial DOM batch and rendering-frame cadence. The structured record keeps those stage observations; raw profiles and every trial are in local artifacts.
+Profiles separate the broad worker round trip from the remaining initial-view work. That interval includes startup, computation and transfer, not pure CPU time. There is no speedup claim. Zero long-task values mean no observed overlapping task at the 50 ms threshold; frame sampling is not every paint or a user percentile.
 
-Every measured trial validates the changed source-line count and successful output. The runs recorded zero failures. The 1.146.0 trials recorded no overlapping main-thread task at the observer's 50 ms threshold. The 1.85.0 large-code trials recorded a largest task of 82 ms and an animation-frame gap of 96.3 ms. Zero in the long-task column means no task at that threshold was observed, not that the main thread did no work. Frame-gap sampling is an observation of callbacks, not proof that every paint or interaction was captured. These are absolute observations for this host, not a speedup comparison or a user percentile estimate.
+## Resource limits and delivery
 
-## Boundaries and delivery
+The host checks 200,000 native lines before copying text and 8 million characters per side. The extension worker admits at most 262,144 serialized UTF-16 characters and 8,000 opening elements per paired materialized row/page or Source row. Supported paginated code is checked per page, not by total output. Oversized indivisible sections fail explicitly before DOM parsing; native source access remains. No text is silently truncated.
 
-The host rejects more than 200,000 native editor lines before copying document text, and rejects more than 8 million characters per side. Worker work has a 12-second timeout. The engine's existing work limits, coarse warnings, incremental mounting, and pagination remain. A large unpaginated prose or HTML structure can still cost more than the representative fixtures. Peak memory, low-end devices, complete page traversal, other desktop platforms, and arbitrary remote providers were not measured.
+View batches use row caps plus 32,768 characters or 8 ms of scheduling admission. One admitted row is indivisible. These are work-admission guards, not hard paint-time or peak-memory bounds. Worker computation has its existing 12-second timeout. Low-end machines, full traversal and other desktop platforms remain unmeasured.
 
-Images remain explicit placeholders. Inert preparation is tested independently with image CSP relaxed in a fixture, including later pages. Production CSP remains restrictive. Credential-free HTTPS links are the only external action. The package has seven entries and contains no tests or source tree.
+Images are placeholders. Inert preparation is tested with image CSP relaxed in a fixture, including later pages; production CSP remains strict. Only credential-free HTTPS links cross the external-action boundary. Production code has no document-write operation.
 
-The default non-retained webview lifecycle releases hidden DOM and result trees. The host retains candidate and last-good inputs, then rebuilds presentation when needed. Retaining hidden contexts could save some recomputation but would keep those derived objects for each open preview and would not remove reload recovery. No memory saving is presented as a measured number.
+The default lifecycle can release hidden DOM and derived results. The host retains inputs and rebuilds presentation when needed. Retaining hidden views would not eliminate explicit reload recovery. No memory-saving number is claimed.
 
-Official vsce packages the extension. A scoped override selects patched minimatch 11.0.1 for that development tool. The saved dependency audit reported zero vulnerabilities. The matcher is not part of the runtime package.
+Official vsce creates the installer, with a scoped patched minimatch development-tool dependency. The saved dependency audit is separate evidence. Raw logs, screenshots, hashes, profiles and trials live under ignored `artifacts/`; this portable summary omits temporary profile paths.
 
-Reproduce the gates from the repository root.
+## Reproduce
 
 ```sh
 npm ci
@@ -71,8 +74,7 @@ npm run package:vscode
 npm run test:vscode:ide -- artifacts/markdown-diff-vscode-0.1.0.vsix
 MARKDOWN_DIFF_IDE_SCENARIO=restricted npm run test:vscode:ide -- artifacts/markdown-diff-vscode-0.1.0.vsix
 MARKDOWN_DIFF_IDE_SCENARIO=virtual npm run test:vscode:ide -- artifacts/markdown-diff-vscode-0.1.0.vsix
+npm run record:vscode
 ```
 
-Set `VSCODE_EXECUTABLE_PATH` and a distinct `MARKDOWN_DIFF_IDE_ARTIFACT_NAME` for another installed version. The test connection preserves Electron's default browser context because older Electron lacks Chromium's browser-context download controls. All IDE runs use temporary profiles and extension directories.
-
-Logs, screenshots, audits, trial records, runtime hashes, and CPU profiles are written under `artifacts/`. That directory is ignored by Git. The structured record commits the portable summary without temporary profile paths. No public Marketplace deployment is part of this validation.
+Set `VSCODE_EXECUTABLE_PATH` and a distinct `MARKDOWN_DIFF_IDE_ARTIFACT_NAME` for another installed version. All profiles and extension directories are temporary. The CDP connection preserves Electron's browser context because older Electron does not implement Chromium's download-context controls. CI execution and council judgments are recorded separately on the PR.

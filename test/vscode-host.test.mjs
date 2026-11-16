@@ -4,7 +4,6 @@ import { document, extensionHost, uri } from './helpers/vscode-host.mjs';
 
 const latest = (panel) => panel.messages.at(-1);
 const rendered = async (panel, captureId) => {
-  await panel.receive({ type: 'comparisonReady', captureId });
   await panel.receive({ type: 'comparisonRendered', captureId });
 };
 
@@ -51,7 +50,7 @@ test('Refresh uses the original pair after focus changes and keeps the previous 
   host.documents.delete(before.uri.toString());
   await panel.receive({ type: 'refresh' });
   assert.equal(latest(panel).status, 'error');
-  assert.match(latest(panel).message, /previous snapshot is still shown/);
+  assert.doesNotMatch(latest(panel).message, /still shown/);
   await panel.receive({ type: 'ready' });
   assert.equal(latest(panel).snapshot.after.text, 'second');
   assert.equal(latest(panel).status, 'error');
@@ -71,7 +70,6 @@ test('a failed comparison followed by webview recreation restores the last succe
   assert.equal(latest(panel).snapshot.captureId, 1);
   assert.equal(latest(panel).snapshot.after.text, 'first');
   await rendered(panel, 1);
-  assert.equal(latest(panel).type, 'comparisonAccepted');
   await panel.receive({ type: 'ready' });
   assert.equal(latest(panel).status, 'error');
   assert.match(latest(panel).message, /Could not compare/);
@@ -88,41 +86,53 @@ test('a recreated preview receives the last successful input when its new compar
   assert.equal(latest(panel).snapshot.captureId, 2);
   await panel.receive({ type: 'comparisonFailed', captureId: 2, message: 'The comparison could not finish.' });
   assert.equal(latest(panel).snapshot.captureId, 1);
-  assert.match(latest(panel).message, /previous snapshot is still shown/);
+  assert.doesNotMatch(latest(panel).message, /still shown/);
 });
 
-test('a late render acknowledgment during a newer read cannot replace the remembered successful input', async () => {
-  const after = document('after.md', 'first successful preview');
-  const host = extensionHost(document('before.md', 'baseline'), after);
+for (const confirmationAfterFailure of [false, true]) {
+  test(`a host capture crossing a late render confirmation keeps the older confirmed input (${confirmationAfterFailure ? 'failure first' : 'confirmation first'})`, async () => {
+    const after = document('after.md', 'first successful preview');
+    const host = extensionHost(document('before.md', 'baseline'), after);
+    await host.run();
+    const panel = host.panels[0];
+    await rendered(panel, 1);
+    host.documents.set(after.uri.toString(), document('after.md', 'unconfirmed second preview'));
+    await host.run();
+    const reads = [];
+    host.api.workspace.openTextDocument = () => new Promise((resolve, reject) => reads.push({ resolve, reject }));
+    const refreshing = host.run();
+    if (!confirmationAfterFailure) await rendered(panel, 2);
+    reads[0].reject(new Error('Provider unavailable'));
+    reads[1].reject(new Error('Provider unavailable'));
+    await refreshing;
+    if (confirmationAfterFailure) await rendered(panel, 2);
+    await panel.receive({ type: 'ready' });
+    assert.equal(latest(panel).status, 'error');
+    assert.equal(latest(panel).snapshot.captureId, 1);
+    assert.equal(latest(panel).snapshot.after.text, 'first successful preview');
+  });
+}
+
+test('confirmation before a newer failing capture preserves the newer confirmed input', async () => {
+  const host = extensionHost();
   await host.run();
   const panel = host.panels[0];
   await rendered(panel, 1);
-  host.documents.set(after.uri.toString(), document('after.md', 'unconfirmed second preview'));
-  await panel.receive({ type: 'refresh' });
-  const reads = [];
-  host.api.workspace.openTextDocument = () => new Promise((resolve, reject) => reads.push({ resolve, reject }));
-  const refreshing = panel.receive({ type: 'refresh' });
-  const count = panel.messages.length;
-  await panel.receive({ type: 'comparisonReady', captureId: 2 });
-  await panel.receive({ type: 'comparisonRendered', captureId: 2 });
-  assert.equal(panel.messages.length, count);
-  reads[0].reject(new Error('Provider unavailable'));
-  reads[1].reject(new Error('Provider unavailable'));
-  await refreshing;
-  await panel.receive({ type: 'ready' });
+  await host.run();
+  await rendered(panel, 2);
+  host.documents.clear();
+  await host.run();
   assert.equal(latest(panel).status, 'error');
-  assert.equal(latest(panel).snapshot.captureId, 1);
-  assert.equal(latest(panel).snapshot.after.text, 'first successful preview');
+  assert.equal(latest(panel).snapshot.captureId, 2);
+  assert.doesNotMatch(latest(panel).message, /still shown/);
 });
 
-test('worker authorization does not promote an input whose DOM never mounted', async () => {
+test('computed input whose DOM never mounted cannot replace confirmed input', async () => {
   const host = extensionHost();
   await host.run();
   const panel = host.panels[0];
   await rendered(panel, 1);
   await panel.receive({ type: 'refresh' });
-  await panel.receive({ type: 'comparisonReady', captureId: 2 });
-  assert.equal(latest(panel).type, 'comparisonAccepted');
   await panel.receive({ type: 'comparisonFailed', captureId: 2, message: 'DOM construction failed.' });
   assert.equal(latest(panel).snapshot.captureId, 1);
   await panel.receive({ type: 'ready' });
@@ -159,9 +169,11 @@ test('a later Refresh supersedes a pending read and a closed panel cannot publis
 test('reopening the same comparison reveals and refreshes its existing panel', async () => {
   const host = extensionHost();
   await host.run();
+  host.api.window.tabGroups.activeTabGroup.viewColumn = 2;
   await host.run();
   assert.equal(host.panels.length, 1);
   assert.equal(host.panels[0].reveals, 1);
+  assert.equal(host.panels[0].revealColumn, 2);
   assert.equal(latest(host.panels[0]).snapshot.captureId, 2);
   host.panels[0].dispose();
   await host.run();
@@ -201,7 +213,7 @@ test('the native line budget is checked before reading text and a rejected Refre
   await panel.receive({ type: 'refresh' });
   assert.equal(latest(panel).status, 'error');
   assert.match(latest(panel).message, /at most 200,000 lines/);
-  assert.match(latest(panel).message, /previous snapshot is still shown/);
+  assert.doesNotMatch(latest(panel).message, /still shown/);
   assert.equal(latest(panel).snapshot.after.text, '# Good input');
   const withinBudget = '\n'.repeat(199_999);
   host.documents.set(after.uri.toString(), document('after.md', withinBudget));

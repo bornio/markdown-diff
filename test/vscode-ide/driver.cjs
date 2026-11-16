@@ -15,8 +15,10 @@ exports.run = async function () {
     assert((await fs.realpath(extension.extensionPath)).startsWith(`${installedRoot}${path.sep}`), 'The installed test must execute the VSIX installation, not repository code.');
   }
   let virtualProvider;
+  let virtualEvents;
   if (virtual) {
     const events = new vscode.EventEmitter();
+    virtualEvents = events;
     const readVirtualFile = async uri => {
       if (!['/workspace/before.md', '/workspace/after.md'].includes(uri.path)) throw vscode.FileSystemError.FileNotFound(uri);
       return fs.readFile(path.join(root, 'workspace', path.basename(uri.path)));
@@ -36,6 +38,7 @@ exports.run = async function () {
   }
   await extension.activate();
   let right;
+  let currentPair;
   let providerFails = false;
   let providerReadFailures = 0;
   const provider = vscode.workspace.registerTextDocumentContentProvider('markdown-diff-test', {
@@ -51,8 +54,9 @@ exports.run = async function () {
     assert(await vscode.workspace.applyEdit(edit), 'The test edit must reach the native document.');
   }
 
-  async function render(original, modified, title, invoke = true) {
-    await vscode.commands.executeCommand('vscode.diff', original, modified, title, { viewColumn: vscode.ViewColumn.One, preview: false });
+  async function render(original, modified, title, invoke = true, column = vscode.ViewColumn.One) {
+    currentPair = { original, modified, title };
+    await vscode.commands.executeCommand('vscode.diff', original, modified, title, { viewColumn: column, preview: false });
     assert(vscode.window.tabGroups.activeTabGroup.activeTab.input instanceof vscode.TabInputTextDiff);
     if (invoke) await vscode.commands.executeCommand(command);
     const documents = await Promise.all([original, modified].map(uri => vscode.workspace.openTextDocument(uri)));
@@ -70,6 +74,17 @@ exports.run = async function () {
     if (request.op === 'edit') {
       await replace(right, `${right.getText()}\nREFRESHED_ONLY\n`);
       return { dirty: right.isDirty, text: right.getText() };
+    }
+    if (request.op === 'capability-update') {
+      const text = `${right.getText()}\nCAPABILITY_REFRESH\n`;
+      if (virtual) {
+        await fs.writeFile(path.join(root, 'workspace', 'after.md'), text);
+        virtualEvents.fire([{ type: vscode.FileChangeType.Changed, uri: right.uri }]);
+        const deadline = Date.now() + 10000;
+        while (!right.getText().includes('CAPABILITY_REFRESH') && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+        assert(right.getText().includes('CAPABILITY_REFRESH'), 'The readonly virtual document must observe its provider change.');
+      } else await replace(right, text);
+      return true;
     }
     if (request.op === 'malformed') {
       await replace(right, `${'<blockquote>'.repeat(120)}Too deeply nested${'</blockquote>'.repeat(120)}`);
@@ -93,6 +108,22 @@ exports.run = async function () {
     }
     if (request.op === 'second-group') {
       await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(root, 'workspace', 'before.md'))), { viewColumn: vscode.ViewColumn.Two, preview: false });
+      return true;
+    }
+    if (request.op === 'reuse-second-group') {
+      const pair = currentPair;
+      await render(pair.original, pair.modified, pair.title, false, vscode.ViewColumn.Two);
+      const target = vscode.window.tabGroups.activeTabGroup;
+      const targetInitiallySecond = target.viewColumn === vscode.ViewColumn.Two;
+      await vscode.commands.executeCommand(command);
+      const title = `Markdown Diff · ${pair.title}`;
+      const locate = () => vscode.window.tabGroups.all.filter(group => group.tabs.some(tab => tab.input instanceof vscode.TabInputWebview && tab.label === title));
+      const deadline = Date.now() + 10000;
+      while (!locate().includes(target) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+      return { targetInitiallySecond, previewInTargetGroup: locate().includes(target), matchingPreviews: locate().length, finalColumns: locate().map(group => group.viewColumn) };
+    }
+    if (request.op === 'join-groups') {
+      await vscode.commands.executeCommand('workbench.action.joinAllGroups');
       return true;
     }
     if (request.op === 'close-secondary') {
@@ -139,6 +170,19 @@ exports.run = async function () {
       await fs.writeFile(path.join(root, 'workspace', 'large-after.md'), after);
       await render(vscode.Uri.file(path.join(root, 'workspace', 'large-before.md')), vscode.Uri.file(path.join(root, 'workspace', 'large-after.md')), 'Large Markdown acceptance');
       return { tableRows: count, combinedInputBytes: Buffer.byteLength(before) + Buffer.byteLength(after) };
+    }
+    if (request.op === 'reading-state') {
+      const before = Array.from({ length: 900 }, (_, i) => `Paragraph ${i + 1} holds the reading position.\n`).join('\n');
+      const after = before.replace('Paragraph 750 holds', 'Paragraph 750 changed');
+      await fs.writeFile(path.join(root, 'workspace', 'reading-before.md'), before);
+      await fs.writeFile(path.join(root, 'workspace', 'reading-after.md'), after);
+      await render(vscode.Uri.file(path.join(root, 'workspace', 'reading-before.md')), vscode.Uri.file(path.join(root, 'workspace', 'reading-after.md')), 'Reading position acceptance');
+      return true;
+    }
+    if (request.op === 'oversized') {
+      const modified = await vscode.workspace.openTextDocument(currentPair.modified);
+      await replace(modified, 'word '.repeat(800000));
+      return { characters: modified.getText().length, lines: modified.lineCount };
     }
     if (request.op === 'prose') {
       const before = Array.from({ length: 100 }, (_, i) => `## Section ${i + 1}\n\nA representative paragraph ${i + 1} for ordinary Markdown review.\n`).join('\n');

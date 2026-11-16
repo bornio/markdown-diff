@@ -12,7 +12,8 @@
     "build:vscode": "node scripts/build-vscode.mjs",
     "package:vscode": "npm run build:vscode && node scripts/package-vscode.mjs",
     "test:vscode": "node --test test/vscode-host.test.mjs && npm run build:vscode && playwright test --config playwright.vscode.config.mjs",
-    "test:vscode:ide": "node scripts/test-vscode-ide.mjs"
+    "test:vscode:ide": "node scripts/test-vscode-ide.mjs",
+    "record:vscode": "node scripts/record-vscode-verification.mjs"
   },
   "dependencies": {
     "diff": "9.0.0",

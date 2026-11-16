@@ -35,7 +35,7 @@ export function extensionHost(before = document('before.md', '# Before'), after 
     } },
     commands: { registerCommand: (id, action) => { commands.set(id, action); return { dispose() {} }; } },
     window: {
-      tabGroups: { activeTabGroup: { activeTab: { label: 'README.md (Working Tree)', input: new TabInputTextDiff(before.uri, after.uri) } } },
+      tabGroups: { activeTabGroup: { viewColumn: 1, activeTab: { label: 'README.md (Working Tree)', input: new TabInputTextDiff(before.uri, after.uri) } } },
       showInformationMessage: async (message) => notices.push(message),
       createWebviewPanel: (viewType, title, column, options) => {
         const disposals = [];
@@ -49,7 +49,7 @@ export function extensionHost(before = document('before.md', '# Before'), after 
           },
           onDidDispose: (listener) => disposals.push(listener),
           dispose: () => disposals.forEach((listener) => listener()),
-          reveal() { this.reveals++; },
+          reveal(column) { this.reveals++; this.revealColumn = column; },
         };
         panels.push(panel);
         return panel;

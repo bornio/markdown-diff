@@ -2,6 +2,7 @@ import '../src/style.css';
 import './webview.css';
 import ComparisonWorker from '../src/compare.worker.js?worker&inline';
 import { createComparisonView } from '../src/view.js';
+import previewLimits from './preview-limits.json';
 
 const vscode = acquireVsCodeApi();
 const $ = (selector) => document.querySelector(selector);
@@ -12,21 +13,21 @@ const refresh = $('#refresh');
 const buttons = { rendered: $('#rendered-view'), source: $('#source-view') };
 const saved = vscode.getState();
 const state = {
-  mode: saved?.mode === 'source' ? 'source' : 'rendered', snapshot: null, shown: null, pending: null, presentation: null,
+  mode: saved?.mode === 'source' ? 'source' : 'rendered', shown: null, presentation: null, attemptKey: '',
   captureId: 0, reading: true, error: '', worker: null, timeout: null,
 };
 const display = createComparisonView(comparison, { scrollTo(target) {
   const top = typeof target === 'number' ? target : window.scrollY + target.getBoundingClientRect().top - toolbar.getBoundingClientRect().height - 12;
   window.scrollTo({ top, behavior: 'instant' });
-} }, { renderDocument, onRendered: mounted, onError: presentationFailed });
+} }, { renderDocument, onRendered: mounted, onError: presentationFailed, batchLimits: previewLimits.batch });
 
 function persist() {
-  vscode.setState({ mode: state.mode, scroll: window.scrollY });
+  if (state.shown && !state.presentation) vscode.setState({ snapshotId: state.shown.snapshot.captureId, mode: state.mode, view: display.getState() });
 }
 
 function update() {
   const result = state.presentation?.kind === 'failed' ? null : state.shown?.result;
-  const busy = state.reading || !!state.worker || !!state.pending || (!!state.presentation && state.presentation.kind !== 'failed');
+  const busy = state.reading || !!state.worker || (!!state.presentation && state.presentation.kind !== 'failed');
   comparison.setAttribute('aria-busy', String(busy));
   for (const [mode, button] of Object.entries(buttons)) button.setAttribute('aria-pressed', String(mode === state.mode));
   const status = state.reading ? 'Reading documents…' : state.presentation?.kind === 'restore' ? 'Restoring previous snapshot…' : busy ? 'Comparing…'
@@ -35,12 +36,13 @@ function update() {
         : result.rows.every((row) => row.kind === 'same') ? 'Same rendered content' : 'Comparison ready';
   if ($('#status').textContent !== status) $('#status').textContent = status;
   const warnings = result?.precision.warnings || [];
-  const announcement = [state.error, ...warnings].filter(Boolean).join(' ');
+  const error = state.error && state.shown && !state.presentation ? `${sentence(state.error)} The previous snapshot is still shown.` : state.error;
+  const announcement = [error, ...warnings].filter(Boolean).join(' ');
   if (notice.textContent !== announcement) notice.textContent = announcement;
   notice.hidden = !notice.textContent;
   notice.classList.toggle('error', !!state.error);
   $('#stats').textContent = result ? `Lines · ${result.stats.added} added · ${result.stats.removed} removed · ${result.stats.changed} changed` : '';
-  if (!state.snapshot) $('#snapshot-label').textContent = state.reading ? 'Reading the comparison…' : 'No snapshot captured.';
+  if (!state.shown) $('#snapshot-label').textContent = state.reading ? 'Reading the comparison…' : 'No snapshot displayed.';
 }
 
 function stopWorker() {
@@ -84,10 +86,15 @@ function describe(snapshot) {
   $('#snapshot-label').textContent = `Snapshot captured ${new Date(snapshot.capturedAt).toLocaleString()}. Refresh to read changes.`;
 }
 
-function mount(value, kind = 'candidate') {
+function sentence(message) {
+  const text = String(message).trim();
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
+function mount(value, kind = 'candidate', bookmark = null) {
   state.presentation = { ...value, kind };
   try {
-    display.reset(value.result, { before: value.snapshot.before.label, after: value.snapshot.after.label });
+    display.reset(value.result, { before: value.snapshot.before.label, after: value.snapshot.after.label }, bookmark);
     display.show(state.mode);
   } catch (error) { presentationFailed(error); }
   update();
@@ -95,104 +102,93 @@ function mount(value, kind = 'candidate') {
 
 function mounted() {
   const value = state.presentation;
-  if (!value || value.kind === 'failed') return;
-  describe(value.snapshot);
-  state.presentation = null;
-  if (value.kind === 'candidate') {
+  if (value?.kind === 'failed') return;
+  if (value) {
+    describe(value.snapshot);
     state.shown = { snapshot: value.snapshot, result: value.result };
-    vscode.postMessage({ type: 'comparisonRendered', captureId: value.snapshot.captureId });
+    state.presentation = null;
+    if (value.kind === 'candidate') vscode.postMessage({ type: 'comparisonRendered', captureId: value.snapshot.captureId });
   }
-  if (saved?.scroll && !saved.restored) {
-    requestAnimationFrame(() => window.scrollTo({ top: saved.scroll, behavior: 'instant' }));
-    saved.restored = true;
-  }
+  persist();
   update();
+}
+
+function terminal(message) {
+  state.error = message;
+  state.presentation = { kind: 'failed', message };
+  state.shown = null;
+  try { display.reset(); } catch {}
+  $('#before-label').textContent = $('#after-label').textContent = '';
 }
 
 function presentationFailed(error) {
   const value = state.presentation;
-  const snapshot = value?.snapshot || state.shown?.snapshot || state.snapshot;
-  state.presentation = state.pending = null;
-  state.error = `The comparison could not be displayed. ${error instanceof Error ? error.message : 'Refresh to try again.'}`;
+  const snapshot = value?.snapshot || state.shown?.snapshot;
+  state.presentation = null;
+  state.error = `The comparison could not be displayed. ${sentence(error instanceof Error ? error.message : 'Refresh to try again')}`;
   if (value?.kind === 'restore') {
-    state.error = 'The previous preview could not be restored. Open the source comparison or Refresh to try again.';
-    state.presentation = { ...value, kind: 'failed', message: state.error };
-    state.shown = null;
-    try { display.reset(); } catch {}
+    terminal('The previous preview could not be restored. Open the source comparison or Refresh to try again.');
   } else {
     if (snapshot) vscode.postMessage({ type: 'comparisonFailed', captureId: snapshot.captureId, message: state.error });
     if (state.shown) mount(state.shown, 'restore');
-    else { try { display.reset(); } catch {} }
+    else display.reset();
   }
   update();
 }
 
 function cancelComparison() {
   stopWorker();
-  state.pending = null;
-  if (state.presentation?.kind === 'failed') state.presentation = null;
-  if (state.presentation?.kind === 'candidate') {
-    state.presentation = null;
+  const displaced = state.presentation && state.presentation.kind !== 'failed';
+  state.presentation = null;
+  if (displaced) {
     if (state.shown) mount(state.shown, 'restore');
     else display.reset();
   }
 }
 
-function compare(snapshot) {
+function compare(snapshot, kind) {
   cancelComparison();
-  state.snapshot = snapshot;
-  if (!state.shown) describe(snapshot);
+  const fail = (message) => {
+    stopWorker();
+    state.error = sentence(message);
+    if (kind === 'candidate') vscode.postMessage({ type: 'comparisonFailed', captureId: snapshot.captureId, message: state.error });
+    if (!state.shown && kind === 'restore') terminal(`The previous preview could not be restored. ${state.error} Open the source comparison or Refresh to try again.`);
+    update();
+  };
   let worker;
   try { worker = new ComparisonWorker(); }
-  catch {
-    state.error = 'The comparison worker could not start. Reload the preview or reinstall the extension.';
-    vscode.postMessage({ type: 'comparisonFailed', captureId: snapshot.captureId, message: state.error });
-    update();
-    return;
-  }
+  catch { fail('The comparison worker could not start. Reload the preview or reinstall the extension.'); return; }
   state.worker = worker;
-  const fail = (message) => {
-    if (state.worker !== worker) return;
-    stopWorker();
-    state.error = message;
-    vscode.postMessage({ type: 'comparisonFailed', captureId: snapshot.captureId, message: state.error });
-    update();
-  };
   worker.onmessage = ({ data }) => {
-    if (state.worker !== worker || data.requestId !== snapshot.captureId) return;
-    if (data.status === 'error') { fail(data.message); return; }
+    if (state.worker !== worker || data?.requestId !== snapshot.captureId) return;
+    if (data.status === 'error' && typeof data.message === 'string') { fail(data.message); return; }
+    if (data.status !== 'ready' || !data.comparison) { fail('The comparison worker returned an invalid result. Refresh to try again.'); return; }
     stopWorker();
-    const result = data.comparison;
-    state.pending = { snapshot, result };
-    vscode.postMessage({ type: 'comparisonReady', captureId: snapshot.captureId });
-    update();
+    mount({ snapshot, result: data.comparison }, kind, saved?.snapshotId === snapshot.captureId ? saved.view : null);
   };
-  worker.onerror = () => fail('The comparison worker stopped unexpectedly. Refresh to try again.');
-  state.timeout = setTimeout(() => fail('This comparison exceeded 12 seconds. Split very large or deeply nested documents into smaller files.'), 12000);
-  worker.postMessage({ requestId: snapshot.captureId, beforeText: snapshot.before.text, afterText: snapshot.after.text });
+  worker.onerror = () => { if (state.worker === worker) fail('The comparison worker stopped unexpectedly. Refresh to try again.'); };
+  state.timeout = setTimeout(() => { if (state.worker === worker) fail('This comparison exceeded 12 seconds. Split very large or deeply nested documents into smaller files.'); }, 12000);
+  worker.postMessage({ requestId: snapshot.captureId, beforeText: snapshot.before.text, afterText: snapshot.after.text,
+    previewLimits: previewLimits.worker });
   update();
 }
 
 window.addEventListener('message', ({ data }) => {
-  if (data?.type === 'comparisonAccepted') {
-    if (!state.pending || data.captureId !== state.pending.snapshot.captureId) return;
-    const value = state.pending;
-    state.pending = null;
-    mount(value);
-    return;
-  }
-  if (!data || data.type !== 'state' || !Number.isInteger(data.captureId) || data.captureId < state.captureId) return;
+  if (!data || data.type !== 'state' || !Number.isInteger(data.captureId) || data.captureId < state.captureId || !['reading', 'ready', 'error'].includes(data.status)) return;
+  const newer = data.captureId > state.captureId;
   state.captureId = data.captureId;
   state.reading = data.status === 'reading';
-  if (state.reading) cancelComparison();
-  state.error = state.presentation?.kind === 'failed' ? state.presentation.message : data.status === 'error' ? data.message : '';
+  if (newer || state.reading) cancelComparison();
+  state.error = state.presentation?.kind === 'failed' ? state.presentation.message : data.status === 'error' && typeof data.message === 'string' ? data.message : '';
   $('#source-label').textContent = data.sourceLabel;
-  if (state.presentation?.kind === 'failed') { update(); return; }
-  if (data.snapshot?.captureId === state.shown?.snapshot.captureId && state.shown) {
-    state.snapshot = data.snapshot;
-  } else if (data.snapshot && (data.snapshot.captureId !== state.snapshot?.captureId || (!state.shown && !state.worker && !state.pending && !state.presentation))) {
-    if (state.reading) state.snapshot = data.snapshot;
-    else compare(data.snapshot);
+  if (!state.reading && state.presentation?.kind !== 'failed' && data.snapshot && Number.isInteger(data.snapshot.captureId)) {
+    const key = `${data.captureId}:${data.snapshot.captureId}`;
+    const alreadyVisible = data.snapshot.captureId === state.shown?.snapshot.captureId;
+    const restoring = data.snapshot.captureId === state.presentation?.snapshot.captureId;
+    if (!alreadyVisible && !restoring && key !== state.attemptKey) {
+      state.attemptKey = key;
+      compare(data.snapshot, data.status === 'error' ? 'restore' : 'candidate');
+    }
   }
   update();
 });

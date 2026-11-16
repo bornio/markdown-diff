@@ -345,7 +345,7 @@ test('Refresh keeps keyboard focus and unchanged notices do not announce again o
   await page.evaluate(state => window.postMessage({ ...state, status: 'reading', captureId: 2, snapshot: undefined }, '*'), state);
   await expect(refresh).toBeFocused();
   await page.evaluate(state => window.postMessage({ ...state, status: 'error', captureId: 2, snapshot: undefined, message: 'A retained warning.' }, '*'), state);
-  await expect(page.locator('#notice')).toHaveText('A retained warning.');
+  await expect(page.locator('#notice')).toHaveText('A retained warning. The previous snapshot is still shown.');
   await page.evaluate(() => {
     window.noticeChanges = 0;
     new MutationObserver(records => { window.noticeChanges += records.length; }).observe(document.querySelector('#notice'), { childList: true, characterData: true, subtree: true });
@@ -365,4 +365,216 @@ test('image-free documents omit image guidance and only the compact action bar s
   await page.evaluate(() => window.scrollTo(0, 500));
   await expect(page.locator('.extension-toolbar')).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('a deep Source reading bookmark survives a real preview reload beyond the initial frontier', async ({ page }) => {
+  const text = Array.from({ length: 1600 }, (_, i) => `Exact source line ${i}.`).join('\n\n');
+  await openPreview(page, [text, text.replace('line 1500', 'changed 1500')]);
+  await page.getByRole('button', { name: 'Source', exact: true }).click();
+  for (let batch = 0; batch < 4; batch++) {
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(70);
+  }
+  const target = page.locator('.source-row').nth(1050);
+  await expect(target).toBeAttached();
+  await target.evaluate(node => window.scrollTo(0, window.scrollY + node.getBoundingClientRect().top + 5));
+  await expect.poll(() => page.evaluate(() => window.saved?.view?.source?.anchor.row)).toBeGreaterThan(1000);
+  const bookmark = await page.evaluate(() => window.saved.view.source.anchor);
+  const visibleAnchor = () => page.evaluate(() => {
+    const y = document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2;
+    const row = document.elementFromPoint(innerWidth / 4, y)?.closest('.source-row');
+    return row ? { line: row.querySelector('.source-number').textContent, offset: y - row.getBoundingClientRect().top } : null;
+  });
+  const visible = await visibleAnchor();
+  await page.reload();
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  await expect(page.locator('#source-view')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.source-row').nth(bookmark.row)).toBeAttached();
+  const top = await page.locator('.source-row').nth(bookmark.row).evaluate(node => node.getBoundingClientRect().top);
+  expect(Math.abs(top + bookmark.offset)).toBeLessThan(3);
+  const restored = await visibleAnchor();
+  expect(restored.line).toBe(visible.line);
+  expect(Math.abs(restored.offset - visible.offset)).toBeLessThan(3);
+  expect(await page.locator('.source-row').nth(1050).locator('.source-code').first().textContent()).toBe('Exact source line 525.\n');
+});
+
+test('a nonzero rendered page survives a real preview reload', async ({ page }) => {
+  const text = Array.from({ length: 230 }, (_, i) => `- Item ${i + 1}`).join('\n');
+  await openPreview(page, [text, text.replace('Item 220', 'Updated 220')]);
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.saved?.view?.rendered?.pages)).toEqual([[0, 2]]);
+  await page.reload();
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  await expect(page.getByRole('status').filter({ hasText: 'Rows 201' })).toContainText('Rows 201–230');
+  await expect(page.locator('.document-cell[data-side=after]')).toContainText('Updated 220');
+});
+
+test('malformed and mismatched bookmarks do not apply to the current snapshot', async ({ page }) => {
+  const text = Array.from({ length: 30 }, (_, i) => `Line ${i}`).join('\n');
+  await openPreview(page, [text, text.replace('Line 20', 'Changed 20')]);
+  for (const saved of [
+    { snapshotId: 999, mode: 'source', view: { source: { anchor: { row: 20, offset: 5 }, pages: [] } } },
+    { snapshotId: 1, mode: 'source', view: { source: { anchor: { row: '20', offset: null }, pages: [[0, -10], null, ['x', 999]] } } },
+  ]) {
+    await page.evaluate(saved => sessionStorage.setItem('preview-state', JSON.stringify(saved)), saved);
+    await page.reload();
+    await expect(page.locator('#status')).toHaveText('Comparison ready');
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await expect(page.locator('.source-code').first()).toContainText('Line 0');
+  }
+});
+
+test('user navigation cancels an automatic deep bookmark jump while mounting', async ({ page }) => {
+  const text = Array.from({ length: 1600 }, (_, i) => `Line ${i}`).join('\n');
+  await openPreview(page, [text, text.replace('Line 1500', 'Changed 1500')]);
+  await page.evaluate(() => sessionStorage.setItem('preview-state', JSON.stringify({ snapshotId: 1, mode: 'source', view: { source: { anchor: { row: 1400, offset: 5 }, pages: [] } } })));
+  await page.addInitScript(() => {
+    new MutationObserver((_, observer) => {
+      if (!document.querySelector('.source-row')) return;
+      observer.disconnect();
+      window.dispatchEvent(new WheelEvent('wheel', { deltaY: 1 }));
+      window.cancelledRestore = true;
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await page.reload();
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  expect(await page.evaluate(() => window.cancelledRestore)).toBe(true);
+  expect(await page.evaluate(() => window.scrollY)).toBeLessThan(500);
+  expect(await page.locator('.source-row').count()).toBeLessThan(1400);
+});
+
+test('a failed confirmed-input replay is truthful and stops until explicit Refresh', async ({ page }) => {
+  const { host, panel } = await openPreview(page);
+  host.documents.clear();
+  await panel.receive({ type: 'refresh' });
+  await page.addInitScript(() => {
+    window.workerStarts = 0;
+    window.Worker = class {
+      constructor() { window.workerStarts++; }
+      postMessage({ requestId }) { queueMicrotask(() => this.onmessage?.({ data: { requestId, status: 'error', message: 'Injected replay failure' } })); }
+      addEventListener() {}
+      terminate() {}
+    };
+  });
+  await page.reload();
+  await expect(page.locator('#notice')).toContainText('The previous preview could not be restored.');
+  await expect(page.locator('#notice')).not.toContainText('previous snapshot is still shown');
+  await expect(page.locator('#comparison')).toBeEmpty();
+  await expect(page.locator('#comparison')).toHaveAttribute('aria-busy', 'false');
+  await panel.receive({ type: 'ready' });
+  await panel.receive({ type: 'ready' });
+  expect(await page.evaluate(() => window.workerStarts)).toBe(1);
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.workerStarts)).toBe(2);
+});
+
+test('oversized preview units fail before creating document DOM and keep native-source guidance', async ({ page }) => {
+  await openPreview(page, ['word '.repeat(80000), 'changed '.repeat(80000)], 'rendered', false);
+  await expect(page.locator('#notice')).toContainText('native source comparison');
+  await expect(page.locator('#comparison')).toBeEmpty();
+  await expect(page.locator('#comparison')).toHaveAttribute('aria-busy', 'false');
+  expect(await page.evaluate(() => window.messages.filter(message => message.type === 'comparisonFailed').length)).toBe(1);
+});
+
+test('presentation errors use sentence punctuation before the truthful prior-view notice', async ({ page }) => {
+  const { refresh } = await openPreview(page);
+  await page.evaluate(() => {
+    const append = Element.prototype.append;
+    let failed = false;
+    Element.prototype.append = function (...nodes) {
+      if (!failed && this.classList.contains('pair-row')) { failed = true; throw new Error('Injected punctuation fault'); }
+      return append.apply(this, nodes);
+    };
+  });
+  await refresh(['# New baseline', '# New changed']);
+  await expect(page.locator('#notice')).toContainText('Injected punctuation fault. The previous snapshot is still shown.');
+});
+
+test('persisted row and page indices are clamped to this snapshot', async ({ page }) => {
+  const text = Array.from({ length: 230 }, (_, i) => `- Item ${i + 1}`).join('\n');
+  await openPreview(page, [text, text.replace('Item 220', 'Updated 220')]);
+  await page.evaluate(() => sessionStorage.setItem('preview-state', JSON.stringify({ snapshotId: 1, mode: 'rendered', view: { rendered: { anchor: { row: 999, offset: 0 }, pages: [[0, 999]] } } })));
+  await page.reload();
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  await expect(page.getByRole('status').filter({ hasText: 'Rows 201' })).toContainText('Rows 201–230');
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('.document-cell[data-side=after]')).toContainText('Updated 220');
+});
+
+test('a newer capture cancels an in-progress deep bookmark restoration', async ({ page }) => {
+  const text = Array.from({ length: 3000 }, (_, i) => `RESTORE_INPUT line ${i}`).join('\n');
+  const { refresh } = await openPreview(page, [text, text.replace('line 2500', 'changed 2500')]);
+  await page.evaluate(() => sessionStorage.setItem('preview-state', JSON.stringify({ snapshotId: 1, mode: 'source', view: { source: { anchor: { row: 2600, offset: 5 }, pages: [] } } })));
+  await page.exposeFunction('supersedeRestore', () => refresh(['# Final original', '# Final changed']));
+  await page.addInitScript(() => {
+    new MutationObserver((_, observer) => {
+      if (!document.querySelector('.source-row')) return;
+      observer.disconnect();
+      window.supersedeRestore();
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await page.reload();
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  await expect(page.locator('.source-cell[data-side=after]')).toContainText('# Final changed');
+  expect(await page.evaluate(() => window.messages.some(message => message.type === 'comparisonRendered' && message.captureId === 1))).toBe(false);
+  expect(await page.locator('.source-row').count()).toBe(1);
+});
+
+test('a failed page alignment never persists the faulty page destination', async ({ page }) => {
+  const text = Array.from({ length: 230 }, (_, i) => `- Item ${i + 1}`).join('\n');
+  await openPreview(page, [text, text.replace('Item 150', 'Updated 150')]);
+  await page.evaluate(() => {
+    const measure = HTMLElement.prototype.getBoundingClientRect;
+    let failed = false;
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      if (!failed && this.matches('li[data-pair]') && this.textContent.includes('Item 150')) { failed = true; throw new Error('Injected page alignment fault'); }
+      return measure.call(this);
+    };
+  });
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.locator('#notice')).toContainText('Injected page alignment fault');
+  await expect(page.getByRole('status').filter({ hasText: 'Rows 1' })).toContainText('Rows 1–100');
+  expect(await page.evaluate(() => window.saved.view.rendered.pages)).toEqual([]);
+  await page.reload();
+  await expect(page.getByRole('status').filter({ hasText: 'Rows 1' })).toContainText('Rows 1–100');
+});
+
+
+test('dense serialized markup is rejected before any preview DOM is parsed', async ({ page }) => {
+  const text = '<div>' + '<span>x</span>'.repeat(4500) + '</div>';
+  await openPreview(page, [text, text + '<p>Changed</p>'], 'rendered', false);
+  await expect(page.locator('#notice')).toContainText('native source comparison');
+  await expect(page.locator('#comparison')).toBeEmpty();
+  await expect(page.locator('#comparison')).toHaveAttribute('aria-busy', 'false');
+});
+
+test('a newer capture terminates an old worker and ignores its queued completion', async ({ page }) => {
+  const { refresh } = await openPreview(page);
+  await page.evaluate(() => {
+    const NativeWorker = Worker;
+    let held = false;
+    window.cancelledWorkers = 0;
+    window.Worker = class extends NativeWorker {
+      postMessage(data) {
+        if (!held) {
+          held = true;
+          const handler = this.onmessage;
+          window.releaseOldWorker = () => handler({ data: { requestId: data.requestId, status: 'error', message: 'Stale worker failure' } });
+          return;
+        }
+        return super.postMessage(data);
+      }
+      terminate() { window.cancelledWorkers++; super.terminate(); }
+    };
+  });
+  await refresh(['# Slow original', '# Slow changed']);
+  await expect(page.locator('#status')).toHaveText('Comparing…');
+  await refresh(['# Final original', '# Final changed']);
+  await expect(page.locator('.document-cell[data-side=after] h1')).toHaveText('Final changed');
+  await page.evaluate(() => window.releaseOldWorker());
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  await expect(page.locator('#notice')).not.toContainText('Stale worker failure');
+  expect(await page.evaluate(() => window.cancelledWorkers)).toBeGreaterThanOrEqual(1);
+  expect(await page.evaluate(() => window.messages.some(message => message.captureId === 2 && ['comparisonRendered', 'comparisonFailed'].includes(message.type)))).toBe(false);
 });

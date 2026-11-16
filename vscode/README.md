@@ -6,13 +6,15 @@ Read Markdown changes as rendered tables, lists, headings, and text. The extensi
 2. Choose **Markdown Diff: Render this comparison** from the Command Palette or the preview button in the diff editor title.
 3. Switch between **Rendered** and **Source**. Edit in the original VS Code editor, then choose **Refresh** in the preview.
 
-The preview is a snapshot. Refresh reads the same original and modified document URIs again, including unsaved editor text. It preserves the baseline selected by VS Code. It does not select HEAD, stage changes, write files, or follow another tab. The original comparison's label appears above both sides. Unsaved sides are marked.
+The preview is a snapshot. Refresh reads the same original and modified document URIs again, including unsaved editor text. It preserves the baseline selected by VS Code. It does not select HEAD, stage changes, write files, or follow another tab. The original comparison's label appears above both sides. Unsaved sides are marked. Reopening the same captured snapshot restores its logical reading position and page. Refresh or a new command capture starts a new view.
 
 The extension supports ordinary text diff tabs for `.md`, `.markdown`, `.mdx`, and `.txt` files, or documents with the Markdown language selected. It treats MDX as Markdown and does not execute components. Merge editors, multi-file changes editors, and ordinary single-file editors must first open a text comparison.
 
 Images appear as labelled placeholders. This avoids displaying current workspace images as historical content. Source retains their exact Markdown, and the rendered view marks changed image attributes. Only external HTTPS links are active. Relative links, file links, and command links stay inactive. No document images or remote scripts load.
 
-Comparisons run in a cancellable Web Worker. Large tables, lists, and supported code blocks use pages. Precision warnings identify work limits. Each input is limited to 8 million characters and 200,000 editor lines, and comparison work stops after 12 seconds. Failed reads, comparisons, and presentation restore the previous successful snapshot. If the browser cannot restore that view, the preview stops and points you back to the original comparison.
+Comparisons run in a cancellable Web Worker. Large tables, lists, and supported code blocks use pages. Precision warnings identify work limits. Each input is limited to 8 million characters and 200,000 editor lines, and comparison work stops after 12 seconds. Indivisible sections that exceed the preview work budget are rejected before DOM construction, with guidance to use the native source comparison or split the section. Nothing is silently truncated.
+
+Recovery uses the last confirmed snapshot, with matching content and timestamp. An overlapping command re-run can return an earlier coherent confirmed snapshot. If the browser cannot restore a view, the preview stops and points you back to the original comparison. Failed page navigation recovers at a safe starting position rather than automatically re-entering the faulty page.
 
 The preview follows the editor's theme and fonts, including high contrast. Controls work with Tab, Enter, and Space. Text can be selected and copied. Editing, saving, undo, and staging remain in VS Code.
 
@@ -43,4 +45,4 @@ To test the installed package in an isolated profile, run this from the reposito
 npm run test:vscode:ide -- artifacts/markdown-diff-vscode-0.1.0.vsix
 ```
 
-The IDE runner uses the installed macOS VS Code by default. Set `VSCODE_EXECUTABLE_PATH` for another executable. Set `MARKDOWN_DIFF_IDE_SCENARIO=restricted` or `virtual` for the additional capability checks. Reports, runtime hashes, accessibility audits, screenshots, and responsiveness observations are written to `artifacts/`.
+The IDE runner uses the installed macOS VS Code by default. Set `VSCODE_EXECUTABLE_PATH` for another executable. Set `MARKDOWN_DIFF_IDE_SCENARIO=restricted` or `virtual` for the additional capability checks. Reports, runtime hashes, accessibility audits, screenshots, and responsiveness observations are written to `artifacts/`. After all matching runs, `npm run record:vscode` validates their identities and regenerates the portable verification record.

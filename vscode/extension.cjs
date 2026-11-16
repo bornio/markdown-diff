@@ -33,7 +33,7 @@ function html(webview, extensionUri) {
     <p id="snapshot-label" class="snapshot-label">Reading the comparison…</p>
     <div class="document-labels">
       <div><span class="side-label">Original</span><span id="before-label"></span></div>
-      <div><span class="side-label">Modified</span><span id="after-label"></span></div>
+      <div><span class="side-label">Changed</span><span id="after-label"></span></div>
     </div>
     <div class="comparison-summary"><span id="status" role="status" aria-live="polite"></span><span id="stats"></span></div>
   </div>
@@ -58,7 +58,7 @@ function activate(context) {
     const key = JSON.stringify(sources.map((uri) => uri.toString()));
     if (sessions.has(key)) {
       const session = sessions.get(key);
-      session.panel.reveal();
+      session.panel.reveal(vscode.window.tabGroups.activeTabGroup.viewColumn);
       await session.capture();
       return;
     }
@@ -67,7 +67,7 @@ function activate(context) {
       localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist')],
     });
     const session = {
-      panel, sources, sourceLabel: tab.label, snapshot: null, shownSnapshot: null, captureId: 0,
+      panel, sources, sourceLabel: tab.label, snapshot: null, confirmedSnapshot: null, captureId: 0,
       status: 'reading', message: '', closed: false,
     };
     sessions.set(key, session);
@@ -76,7 +76,7 @@ function activate(context) {
       void panel.webview.postMessage({
         type: 'state', captureId: session.captureId, status: session.status, message: session.message,
         sourceLabel: session.sourceLabel,
-        ...(includeSnapshot ? { snapshot: session.status === 'error' ? session.shownSnapshot : session.snapshot } : {}),
+        ...(includeSnapshot ? { snapshot: session.status === 'error' ? session.confirmedSnapshot : session.snapshot } : {}),
       });
     };
     session.capture = async () => {
@@ -100,7 +100,7 @@ function activate(context) {
       } catch (error) {
         if (session.closed || captureId !== session.captureId) return;
         session.status = 'error';
-        session.message = `${session.shownSnapshot ? 'Refresh failed. The previous snapshot is still shown. ' : 'Could not read this comparison. '}${error instanceof Error ? error.message : 'The document provider did not return text.'}`;
+        session.message = `${session.confirmedSnapshot ? 'Refresh failed. ' : 'Could not read this comparison. '}${error instanceof Error ? error.message : 'The document provider did not return text.'}`;
         send(true);
       }
     };
@@ -108,17 +108,12 @@ function activate(context) {
       if (!message || typeof message !== 'object') return;
       if (message.type === 'ready') send(true);
       else if (message.type === 'refresh') await session.capture();
-      else if (message.type === 'comparisonReady' && Number.isInteger(message.captureId)) {
-        const current = session.status === 'ready' && message.captureId === session.captureId && message.captureId === session.snapshot?.captureId;
-        if (current || (session.status === 'error' && message.captureId === session.shownSnapshot?.captureId)) {
-          void panel.webview.postMessage({ type: 'comparisonAccepted', captureId: message.captureId });
-        }
-      } else if (message.type === 'comparisonRendered' && session.status === 'ready' && message.captureId === session.captureId && message.captureId === session.snapshot?.captureId) {
-        session.shownSnapshot = session.snapshot;
+      else if (message.type === 'comparisonRendered' && session.status === 'ready' && message.captureId === session.captureId && message.captureId === session.snapshot?.captureId) {
+        session.confirmedSnapshot = session.snapshot;
       } else if (message.type === 'comparisonFailed' && message.captureId === session.snapshot?.captureId && session.status !== 'reading' && typeof message.message === 'string') {
         session.status = 'error';
-        session.message = `${message.message.slice(0, 1900)}${session.shownSnapshot ? ' The previous snapshot is still shown.' : ''}`;
-        send(!!session.shownSnapshot && session.shownSnapshot.captureId !== message.captureId);
+        session.message = message.message.slice(0, 1900);
+        send(!!session.confirmedSnapshot && session.confirmedSnapshot.captureId !== message.captureId);
       } else if (message.type === 'openExternal' && typeof message.url === 'string' && message.url.length <= 8192) {
         try {
           const url = new URL(message.url);

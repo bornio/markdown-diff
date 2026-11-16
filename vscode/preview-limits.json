@@ -1,0 +1,4 @@
+{
+  "worker": { "characters": 262144, "elements": 8000 },
+  "batch": { "characters": 32768, "milliseconds": 8 }
+}

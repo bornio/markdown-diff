@@ -1,22 +1,65 @@
 {
   "package": "markdown-diff-vscode-0.1.0.vsix",
-  "package_sha256": "46435e82fb843fa51844eb524315c1aaf28b141068eba1947cef5fa0844860d1",
+  "package_sha256": "83c578a111d56ef26af50d84d6aa35f36ada748105560a27de16cd8cdfc9e7f3",
   "runtime_sha256": {
-    "extension.cjs": "3e31d40598ec49bf89b4fb40be17934482c6e0441cd3eb474de73c4b04372c2f",
-    "dist/webview.js": "6149836f6312fc6a953263a3e253e718129c488f69772c6f1ff3c62ed2f734c9",
+    "extension.cjs": "1435d190a83b08fadd89d85f60cd03f33709fd5576356f149e908739774d540d",
+    "dist/webview.js": "d9f6a0a65163e45df390f51383ed36b30bcbf03fe0bedac34560fc5bd370378d",
     "dist/webview.css": "79b9df95067e140ba6bccc74d504e89012d086af3147c7fcc3ede6f61f76514e"
   },
-  "harness_sha256": {
-    "scripts/test-vscode-ide.mjs": "043f27e861f891ee56878320b5f5f512fc47a9edf69087944c15ebe2cbf1c9b2",
-    "test/vscode-ide/driver.cjs": "d5416e9a999caabb0dadd7a2a59efbd9fa4c2564120bfcf2f147732f2c53c9f1"
+  "build": {
+    "inputs": {
+      "package-lock.json": "fe8af4c91685ae3ed37ff780d059a58be7e471d3937a4f5fff4db20d703a6e30",
+      "package.json": "cc8c1b0c758d6aeb4083542a14f4e28521809b883a8bb83906970d42cc8a4aa0",
+      "scripts/build-vscode.mjs": "c4aa0a667d47059788d863dd4138c87232becb710f4457211e34e0949b0e4952",
+      "src/app.js": "ffeeb4d6412904eb817e858da0e2f6f39ca8ea9829a109ac6c01123d7c98752a",
+      "src/chrome.js": "451aec6e7aa08c411a79f97691e6a9fe7f27dddf540a4f83fd55fb8e4941c889",
+      "src/compare.js": "4e65b414170d0e5329377fa07c3f554e86ed4daa2d2e4fa2eb4e46ea13fba448",
+      "src/compare.worker.js": "04bc42f0ee8b3233c304fdc0d61999cf53deb91b630a90bd5e09020b289ce0e0",
+      "src/example.js": "cbd117a278f34b9b8ff66e55177d2d2b59ccb90f0f8b5364b0cd0230d576f995",
+      "src/format-marks.js": "9d859293529198ff0d228bd9ad123b03b0a1c91fe958e09ceea00508081d3ee2",
+      "src/github.js": "4922703e1e3c8fd2798f69b632468b74f2c6f7926dcd6c21966ad0843db2ad9c",
+      "src/partners.js": "184b5217559e0224025a5b5b88d34cf2ff4abe953d5ecba725dc1fb80d9779b9",
+      "src/style.css": "530c6290273ed3d3f49589f8bcfe8d4f08703a13f27c005e1b6237dbffcc7de2",
+      "src/tables.js": "a342516e0775a7ed0b2a8db5ff999da605ec79cd969f1af91c96232079ab9811",
+      "src/theme.js": "a1851236943295cdca53f9e27458c1b7f924fbd8d3d9845ca5620f4b757b057b",
+      "src/version-menu.js": "8ab3859afb76c7923bd1410281f096e4da996dd1cda68c77511f38846a73ebeb",
+      "src/versions.js": "c0c15c6c7f85680f9586ca7b46aece9d0abe88e48e7782d01c0acd865b6878a8",
+      "src/view.js": "740f4b3534f822aa6e3ca76a494fb471b97647a3b7f0c4b390f5e01cb35dd05d",
+      "vscode/README.md": "b6bd8aca99582bba81f56f9e1add30dba232b34596f6388b4ee25dff2210bd30",
+      "vscode/extension.cjs": "1435d190a83b08fadd89d85f60cd03f33709fd5576356f149e908739774d540d",
+      "vscode/package.json": "1d3260455b6ee89d2783ca8c44561c1c94e7e8cf82e8d541f03d6cec9325db51",
+      "vscode/preview-limits.json": "0e7013527b28ee444183fdab0042faa1e0ab1247cb288154151f6511f875bbaf",
+      "vscode/webview.css": "60ce321b808c5a52beea84ecd56b9945cb0318661ea7892148e0166381378689",
+      "vscode/webview.js": "b4022fef3466354612f3ffbf2939e3de135f51638727853c8b886fc6e0833fd1"
+    },
+    "outputs": {
+      "vscode/extension.cjs": "1435d190a83b08fadd89d85f60cd03f33709fd5576356f149e908739774d540d",
+      "vscode/dist/webview.js": "d9f6a0a65163e45df390f51383ed36b30bcbf03fe0bedac34560fc5bd370378d",
+      "vscode/dist/webview.css": "79b9df95067e140ba6bccc74d504e89012d086af3147c7fcc3ede6f61f76514e"
+    },
+    "node_version": "v26.13.1"
   },
+  "harness_sha256": {
+    "scripts/test-vscode-ide.mjs": "83f5f9084d0d910f6319be348e0d85456473b4cdda6f5e8bab55d201638142f7",
+    "test/vscode-ide/driver.cjs": "bfed01665bc5191512000a49f1b4ec88126bee7b9e98abe6b28485ec2c1a958d"
+  },
+  "recorder_sha256": "40951710163febcac84e6ce3aeea2af01228f823e7faf12596e71da635ab76a5",
   "platform": "macOS arm64",
-  "logical_cpu_cores": 10,
   "checks": {
-    "host_tests": 12,
-    "bundled_browser_tests": 19,
-    "website_node_tests": 80,
-    "website_browser_tests": 31
+    "website_node_tests": 88,
+    "website_browser_tests": 31,
+    "host_tests": 14,
+    "bundled_browser_tests": 31
+  },
+  "policy": {
+    "worker": {
+      "characters": 262144,
+      "elements": 8000
+    },
+    "batch": {
+      "characters": 32768,
+      "milliseconds": 8
+    }
   },
   "matrix": [
     {
@@ -27,6 +70,7 @@
       "completed_checks": [
         "Editor title action uses the selected diff and includes unsaved text",
         "Real webview blocks unsafe Markdown and image requests",
+        "Reusing the same pair reveals its single preview in the newly active editor group",
         "Source retains exact formatting syntax",
         "Refresh updates the fixed pair and snapshots stay fixed before refresh",
         "Keyboard switches the comparison mode",
@@ -38,11 +82,14 @@
         "Closing and reopening a comparison creates a working fresh preview",
         "Real Git working-tree comparison preserves its selected documents",
         "Real Git staged comparison preserves the index baseline",
+        "Verified webview reload restores a deep logical Source reading anchor beyond the initial batch",
         "A 1200-row table uses rendered pagination",
+        "Verified webview reload restores a nonzero rendered table page",
         "Five measured 1200-row table refreshes finish correctly with bounded observed UI frame gaps",
         "Five measured 100-section prose refreshes finish correctly with bounded observed UI frame gaps",
         "Five measured 50000-line code refreshes finish correctly with bounded observed UI frame gaps",
-        "A provider failure preserves the last successful comparison",
+        "An oversized legal-size section is rejected before presentation while the prior view and UI responsiveness remain intact",
+        "Actual provider failure and verified reload preserve matching content and timestamp",
         "Preview and refresh never write the source file"
       ],
       "accessibility_states": [
@@ -132,16 +179,16 @@
             "combinedInputBytes": 45875
           },
           "trials": 5,
-          "median_ms": 180.1,
+          "median_ms": 179.59999999403954,
           "range_ms": [
-            171.5,
-            195.6
+            170.19999998807907,
+            196.90000000596046
           ],
-          "maximum_observed_frame_gap_ms": 19.1,
+          "maximum_observed_frame_gap_ms": 18.30000001192093,
           "maximum_observed_long_task_ms": 0,
           "failures": 0,
-          "profiled_trial_total_ms": 176.3,
-          "profiled_worker_round_trip_ms": 76.6
+          "profiled_trial_total_ms": 171.5,
+          "profiled_worker_round_trip_ms": 76.19999998807907
         },
         {
           "workload": "prose",
@@ -150,16 +197,16 @@
             "combinedInputBytes": 15174
           },
           "trials": 5,
-          "median_ms": 263.8,
+          "median_ms": 265,
           "range_ms": [
-            251.1,
-            279.6
+            254.90000000596046,
+            282.7000000178814
           ],
-          "maximum_observed_frame_gap_ms": 18.9,
+          "maximum_observed_frame_gap_ms": 18.900000005960464,
           "maximum_observed_long_task_ms": 0,
           "failures": 0,
-          "profiled_trial_total_ms": 259.6,
-          "profiled_worker_round_trip_ms": 39.3
+          "profiled_trial_total_ms": 259.5,
+          "profiled_worker_round_trip_ms": 39.89999997615814
         },
         {
           "workload": "code",
@@ -168,19 +215,19 @@
             "combinedInputBytes": 7077821
           },
           "trials": 5,
-          "median_ms": 711.7,
+          "median_ms": 666.0999999940395,
           "range_ms": [
-            683.5,
-            713.5
+            661.7000000178814,
+            694.5999999940395
           ],
-          "maximum_observed_frame_gap_ms": 46.7,
+          "maximum_observed_frame_gap_ms": 45.5,
           "maximum_observed_long_task_ms": 0,
           "failures": 0,
-          "profiled_trial_total_ms": 709.2,
-          "profiled_worker_round_trip_ms": 532.5
+          "profiled_trial_total_ms": 676,
+          "profiled_worker_round_trip_ms": 530
         }
       ],
-      "tested_at": "2026-11-15T23:02:48.216Z"
+      "tested_at": "2026-11-16T02:03:56.461Z"
     },
     {
       "scenario": "minimum",
@@ -190,6 +237,7 @@
       "completed_checks": [
         "Editor title action uses the selected diff and includes unsaved text",
         "Real webview blocks unsafe Markdown and image requests",
+        "Reusing the same pair reveals its single preview in the newly active editor group",
         "Source retains exact formatting syntax",
         "Refresh updates the fixed pair and snapshots stay fixed before refresh",
         "Keyboard switches the comparison mode",
@@ -201,11 +249,14 @@
         "Closing and reopening a comparison creates a working fresh preview",
         "Real Git working-tree comparison preserves its selected documents",
         "Real Git staged comparison preserves the index baseline",
+        "Verified webview reload restores a deep logical Source reading anchor beyond the initial batch",
         "A 1200-row table uses rendered pagination",
+        "Verified webview reload restores a nonzero rendered table page",
         "Five measured 1200-row table refreshes finish correctly with bounded observed UI frame gaps",
         "Five measured 100-section prose refreshes finish correctly with bounded observed UI frame gaps",
         "Five measured 50000-line code refreshes finish correctly with bounded observed UI frame gaps",
-        "A provider failure preserves the last successful comparison",
+        "An oversized legal-size section is rejected before presentation while the prior view and UI responsiveness remain intact",
+        "Actual provider failure and verified reload preserve matching content and timestamp",
         "Preview and refresh never write the source file"
       ],
       "accessibility_states": [
@@ -295,16 +346,16 @@
             "combinedInputBytes": 45875
           },
           "trials": 5,
-          "median_ms": 227.7,
+          "median_ms": 215.80000001192093,
           "range_ms": [
-            218.7,
-            232.2
+            206.2999999821186,
+            216.40000000596046
           ],
-          "maximum_observed_frame_gap_ms": 24.7,
+          "maximum_observed_frame_gap_ms": 24.19999998807907,
           "maximum_observed_long_task_ms": 0,
           "failures": 0,
-          "profiled_trial_total_ms": 215.4,
-          "profiled_worker_round_trip_ms": 115.3
+          "profiled_trial_total_ms": 212.5,
+          "profiled_worker_round_trip_ms": 117.59999999403954
         },
         {
           "workload": "prose",
@@ -313,16 +364,16 @@
             "combinedInputBytes": 15174
           },
           "trials": 5,
-          "median_ms": 266.9,
+          "median_ms": 265.40000000596046,
           "range_ms": [
-            261.8,
-            269.3
+            251.5,
+            268.30000001192093
           ],
           "maximum_observed_frame_gap_ms": 23,
           "maximum_observed_long_task_ms": 0,
           "failures": 0,
-          "profiled_trial_total_ms": 252.5,
-          "profiled_worker_round_trip_ms": 41.7
+          "profiled_trial_total_ms": 250.30000001192093,
+          "profiled_worker_round_trip_ms": 42.599999994039536
         },
         {
           "workload": "code",
@@ -331,19 +382,19 @@
             "combinedInputBytes": 7077821
           },
           "trials": 5,
-          "median_ms": 1098.7,
+          "median_ms": 1081.7999999821186,
           "range_ms": [
-            1079.1,
-            1114.7
+            1075.699999988079,
+            1095.9000000059605
           ],
-          "maximum_observed_frame_gap_ms": 96.3,
-          "maximum_observed_long_task_ms": 82,
+          "maximum_observed_frame_gap_ms": 92.40000000596046,
+          "maximum_observed_long_task_ms": 80,
           "failures": 0,
-          "profiled_trial_total_ms": 1075.5,
-          "profiled_worker_round_trip_ms": 820.4
+          "profiled_trial_total_ms": 1028.0999999940395,
+          "profiled_worker_round_trip_ms": 838.4000000059605
         }
       ],
-      "tested_at": "2026-11-15T23:04:46.449Z"
+      "tested_at": "2026-11-16T02:04:33.115Z"
     },
     {
       "scenario": "restricted",
@@ -354,6 +405,8 @@
         "Editor title action uses the selected diff and includes unsaved text",
         "Real webview blocks unsafe Markdown and image requests",
         "Source retains exact formatting syntax",
+        "Refresh observes new native/provider text without losing keyboard focus",
+        "Actual provider failure and verified reload preserve matching content and timestamp",
         "The installed extension works in actual Restricted Mode"
       ],
       "accessibility_states": [
@@ -367,10 +420,21 @@
           "axe_version": "4.14.0",
           "violations": 0,
           "incomplete": 0
+        },
+        {
+          "name": "restricted-recovery",
+          "viewport": {
+            "width": 786,
+            "height": 802,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
         }
       ],
       "measurements": [],
-      "tested_at": "2026-11-15T23:09:08.381Z"
+      "tested_at": "2026-11-16T02:04:39.860Z"
     },
     {
       "scenario": "virtual",
@@ -381,6 +445,8 @@
         "Title action renders the selected documents in a virtual workspace",
         "Real webview blocks unsafe Markdown and image requests",
         "Source retains exact formatting syntax",
+        "Refresh observes new native/provider text without losing keyboard focus",
+        "Actual provider failure and verified reload preserve matching content and timestamp",
         "The installed extension works in an actual virtual workspace"
       ],
       "accessibility_states": [
@@ -394,17 +460,29 @@
           "axe_version": "4.14.0",
           "violations": 0,
           "incomplete": 0
+        },
+        {
+          "name": "virtual-recovery",
+          "viewport": {
+            "width": 786,
+            "height": 802,
+            "devicePixelRatio": 2
+          },
+          "axe_version": "4.14.0",
+          "violations": 0,
+          "incomplete": 0
         }
       ],
       "measurements": [],
-      "tested_at": "2026-11-15T23:09:14.711Z"
+      "tested_at": "2026-11-16T02:04:46.109Z"
     }
   ],
   "limits": [
     "One host and desktop platform.",
     "No manual screen-reader study.",
-    "Initial mounting and warm cached inputs, not complete page traversal.",
-    "Peak memory and every external document provider remain unmeasured.",
-    "No speedup or user percentile claim."
+    "Warm cached inputs and initial mounting, not complete traversal.",
+    "No hard paint-time or peak-memory bound.",
+    "Not every external provider.",
+    "No speedup or user-percentile claim."
   ]
 }
