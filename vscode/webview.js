@@ -30,14 +30,20 @@ function update() {
   const busy = state.reading || !!state.worker || (!!state.presentation && state.presentation.kind !== 'failed');
   comparison.setAttribute('aria-busy', String(busy));
   for (const [mode, button] of Object.entries(buttons)) button.setAttribute('aria-pressed', String(mode === state.mode));
-  const status = state.reading ? 'Reading documents…' : state.presentation?.kind === 'restore' ? 'Restoring previous snapshot…' : busy ? 'Comparing…'
-    : state.error ? 'Comparison needs attention' : !result ? 'No comparison available'
-      : !result.stats.added && !result.stats.removed && !result.stats.changed ? 'Files are identical'
-        : result.rows.every((row) => row.kind === 'same') ? 'Same rendered content' : 'Comparison ready';
+  let status = 'Comparison ready';
+  if (state.reading) status = 'Reading documents…';
+  else if (state.presentation?.kind === 'restore') status = 'Restoring previous snapshot…';
+  else if (busy) status = 'Comparing…';
+  else if (state.error) status = 'Comparison needs attention';
+  else if (!result) status = 'No comparison available';
+  else if (!result.stats.added && !result.stats.removed && !result.stats.changed) status = 'Files are identical';
+  else if (result.rows.every((row) => row.kind === 'same')) status = 'Same rendered content';
   if ($('#status').textContent !== status) $('#status').textContent = status;
   const warnings = result?.precision.warnings || [];
   const error = state.error && state.shown && !state.presentation ? `${sentence(state.error)} The previous snapshot is still shown.` : state.error;
   const announcement = [error, ...warnings].filter(Boolean).join(' ');
+  const role = state.error ? 'alert' : 'status';
+  if (notice.getAttribute('role') !== role) notice.setAttribute('role', role);
   if (notice.textContent !== announcement) notice.textContent = announcement;
   notice.hidden = !notice.textContent;
   notice.classList.toggle('error', !!state.error);
@@ -58,7 +64,7 @@ function renderDocument(html) {
   for (const image of template.content.querySelectorAll('img')) {
     const placeholder = document.createElement('span');
     placeholder.className = 'image-placeholder';
-    placeholder.textContent = `Image · ${image.alt || 'No description'}`;
+    placeholder.textContent = `Image not loaded · ${image.alt || 'No description'}`;
     placeholder.title = 'Image preview is not loaded. Source shows its exact Markdown.';
     placeholder.setAttribute('role', 'img');
     placeholder.setAttribute('aria-label', `${image.alt || 'Image'}. Preview not loaded.`);

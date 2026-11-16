@@ -90,11 +90,10 @@ test('inert image preparation prevents requests independently of CSP, including 
   await page.route('https://example.com/**', route => { requests.push(route.request().url()); return route.abort(); });
   const text = Array.from({ length: 230 }, (_, i) => `- Item ${i + 1}${i === 219 ? ' ![Late image](https://example.com/late.png) [Inactive](command:workbench.action.closeWindow)' : ''}`).join('\n');
   await openPreview(page, [text, text.replace('late.png', 'new.png')], 'rendered', true, { allowImages: true });
-  await expect(page.locator('.image-notice')).toBeHidden();
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page.locator('.image-placeholder')).toHaveCount(2);
-  await expect(page.locator('.image-notice')).toBeVisible();
+  await expect(page.locator('.image-placeholder').first()).toContainText('Image not loaded');
   await expect(page.locator('a').filter({ hasText: 'Inactive' }).first()).toHaveAttribute('aria-disabled', 'true');
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   expect(requests).toEqual([]);
@@ -359,11 +358,20 @@ test('Refresh keeps keyboard focus and unchanged notices do not announce again o
   expect(await page.evaluate(() => window.noticeChanges)).toBe(0);
 });
 
-test('image-free documents omit image guidance and only the compact action bar stays pinned', async ({ page }) => {
+test('precision warnings are polite while read failures are urgent', async ({ page }) => {
+  const { host, panel } = await openPreview(page, ['a '.repeat(10000), 'b '.repeat(10000)]);
+  await expect(page.locator('#notice')).toContainText('work limit');
+  await expect(page.locator('#notice')).toHaveAttribute('role', 'status');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  host.documents.clear();
+  await panel.receive({ type: 'refresh' });
+  await expect(page.getByRole('alert')).toContainText('Refresh failed');
+});
+
+test('only the compact action bar stays pinned in a narrow column', async ({ page }) => {
   const text = Array.from({ length: 230 }, (_, i) => `- Item ${i}`).join('\n');
   await page.setViewportSize({ width: 440, height: 400 });
   await openPreview(page, [text, text.replace('Item 220', 'Changed 220')]);
-  await expect(page.locator('.image-notice')).toBeHidden();
   const height = await page.locator('.extension-toolbar').evaluate(node => node.getBoundingClientRect().height);
   expect(height).toBeLessThan(80);
   await page.evaluate(() => window.scrollTo(0, 500));

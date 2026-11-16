@@ -72,17 +72,16 @@ body { padding:0; }
   border-color:var(--border-strong);
 }
 #refresh { min-height:32px; color:var(--secondary-text); }
-.source-label { margin:12px 0 4px; font-size:13px; font-weight:600; overflow-wrap:anywhere; }
-.snapshot-label { margin:0 0 12px; font-size:11px; line-height:1.5; color:var(--muted); }
+.source-label { margin:8px 0 4px; font-size:13px; font-weight:600; overflow-wrap:anywhere; }
+.snapshot-label { margin:0 0 8px; font-size:11px; line-height:1.5; color:var(--muted); }
 .document-labels { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; }
-.document-labels>div { min-width:0; padding-bottom:8px; font-size:12px; overflow-wrap:anywhere; }
-.side-label { display:block; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:3px; }
-.comparison-metadata .comparison-summary { padding:7px 0; flex-direction:row; align-items:flex-start; text-align:left; flex-wrap:wrap; gap:6px 20px; font-size:11px; }
-.image-notice { display:none; font-size:11px; line-height:1.6; color:var(--muted); margin:12px 20px; }
-body:has(.image-placeholder) .image-notice { display:block; }
+.document-labels>div { display:flex; align-items:baseline; flex-wrap:wrap; gap:3px 6px; min-width:0; padding-bottom:4px; font-size:12px; overflow-wrap:anywhere; }
+.side-label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.comparison-metadata .comparison-summary { padding:4px 0; flex-direction:row; align-items:flex-start; text-align:left; flex-wrap:wrap; gap:6px 20px; font-size:11px; }
 .notice { margin:12px 20px; }
-#comparison { padding:16px 0 40px; }
+#comparison { padding:8px 0 40px; }
 .document-cell { font-size:var(--vscode-markdown-font-size,14px); padding-inline:24px; }
+.document-cell h1 { font-size:2em; padding-bottom:8px; }
 .document-cell pre,.document-cell code,.source-cell { font-family:var(--vscode-editor-font-family,ui-monospace,monospace); }
 .source-cell { font-size:var(--vscode-editor-font-size,12px); }
 .image-placeholder { display:inline-block; padding:10px 12px; border:1px dashed var(--border-strong); border-radius:4px; color:var(--muted); background:var(--surface); font-size:12px; }

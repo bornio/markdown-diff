@@ -1,25 +1,25 @@
-# VS Code extension verification
+# VS Code extension acceptance, 2026-11-16
 
 This record covers the read-only snapshot of the native Markdown text comparison. Native VS Code selects the pair and owns editing. The shared engine compares captured text, and explicit Refresh reads the same pair again.
 
 ## Artifact identity
 
-Package `markdown-diff-vscode-0.1.0.vsix`, SHA-256 `2eceb650be0f44a26785012e3128e0bfc837546ba530e425c17fecf0bc2f5f3d`.
+Package `markdown-diff-vscode-0.1.0.vsix`, SHA-256 `1b7a7f73283a07b15217b8b3345c1a0c8370879bbf56a55f3a4be5a3cc1017ac`.
 
-The [structured record](vscode-verification.json) binds source inputs, bundled outputs, archive entries, installed runtime files, and the unchanged acceptance harness. The build hashes inputs before bundling and checks them afterward. Each installed run compares its loaded bytes directly with the requested archive. The recorder refuses stale or inconsistent records and can be rerun with `npm run record:vscode`.
+This dated snapshot describes one built candidate. Future candidates keep their own results. Each installed run asserts that its loaded runtime files match the requested archive. Raw records preserve the package and test-harness hashes, versions, named checks and trial data in ignored `artifacts/`.
 
 ## Installed matrix
 
-All runs use the same package on one macOS arm64 host. The minimum application was Microsoft's official signed and notarized build, verified before execution. Each scenario below passed its named checks. Capability runs do not claim every external provider.
+All runs use the same package on one macOS arm64 host. The acceptance driver runs in an isolated Extension Development Host and asserts that product files come from the VSIX installation. It leaves the product inactive until the native title action activates it. The minimum application was Microsoft's official signed and notarized build, verified before execution. Each scenario below passed its named checks. Capability runs do not claim every external provider.
 
 | Scenario | VS Code | Trusted | Virtual workspace | Checks | Audited states |
 | --- | --- | --- | --- | ---: | ---: |
-| installed | 1.146.0 | true | false | 23 | 7 |
-| minimum | 1.85.0 | true | false | 23 | 7 |
-| restricted | 1.146.0 | false | false | 6 | 2 |
-| virtual | 1.146.0 | true | true | 6 | 2 |
+| installed | 1.146.0 | true | false | 24 | 7 |
+| minimum | 1.85.0 | true | false | 24 | 7 |
+| restricted | 1.146.0 | false | false | 7 | 2 |
+| virtual | 1.146.0 | true | true | 7 | 2 |
 
-The source gates passed 88 Node tests and 31 website browser tests, plus the separately invoked 14 host and 31 bundled browser tests. Some counts overlap. They are not independent totals to add.
+The source gates passed 88 Node tests and 31 website browser tests, plus the separately invoked 14 host and 32 bundled browser tests. Some counts overlap. They are not independent totals to add.
 
 ## Correctness, recovery and reading state
 
@@ -31,9 +31,9 @@ Logical reading bookmarks contain a row anchor, offset and page indices, tied to
 
 ## Accessibility and diagnostics
 
-The 18 saved axe-core states report zero WCAG-tagged violations and zero incomplete checks, both of which the runner asserts. Full runs include Source, four native themes, native 200 percent zoom and recovery. Capability runs include Source and recovery. Refresh stays focusable, persistent live messages are not needlessly rewritten, and visible/audible side vocabulary agrees. Automated checks and semantic markup are not a manual screen-reader study or universal conformance claim.
+The 18 saved axe-core states report zero WCAG-tagged violations and zero incomplete checks, both of which the runner asserts. Full runs include Source, four native themes, native 200 percent zoom and recovery. Capability runs include Source and recovery. Refresh stays focusable, persistent live messages are not needlessly rewritten, and visible/audible side vocabulary agrees. Precision warnings use a polite status region. Read and presentation failures use an urgent alert. Automated checks and semantic markup are not a manual screen-reader study or universal conformance claim.
 
-The runner records preview-associated console, page and content-policy diagnostics separately from main-process logs and fails on unexpected preview errors. Narrow layout also has explicit viewport assertions; its whole-window image is supporting evidence, not a substitute for them.
+The runner records preview-associated console, page and content-policy diagnostics separately from main-process logs and fails on unexpected preview errors. Narrow layout also has explicit viewport assertions, including a completely visible first heading at native 200 percent zoom; its whole-window image is supporting evidence, not a substitute for them.
 
 ## Responsiveness observations
 
@@ -41,12 +41,12 @@ Each row summarizes five successful warm Refresh trials. Values are milliseconds
 
 | VS Code | Workload per document | Median wait | Trial range | Largest observed frame gap | Largest observed long task |
 | --- | --- | ---: | ---: | ---: | ---: |
-| 1.146.0 | 1,200-row table | 171.9 | 166.6 to 197.7 | 18.8 | 0.0 |
-| 1.146.0 | 100-section prose | 262.4 | 252.9 to 279.5 | 18.3 | 0.0 |
-| 1.146.0 | 50,000 code lines | 663.6 | 659.3 to 679.8 | 40.2 | 0.0 |
-| 1.85.0 | 1,200-row table | 216.0 | 205.3 to 219.5 | 24.6 | 0.0 |
-| 1.85.0 | 100-section prose | 252.7 | 247.4 to 267.7 | 25.9 | 0.0 |
-| 1.85.0 | 50,000 code lines | 1073.7 | 1064.9 to 1082.6 | 88.7 | 80.0 |
+| 1.146.0 | 1,200-row table | 196.5 | 181.0 to 197.4 | 18.7 | 0.0 |
+| 1.146.0 | 100-section prose | 262.5 | 251.5 to 279.7 | 18.9 | 0.0 |
+| 1.146.0 | 50,000 code lines | 663.6 | 661.3 to 678.6 | 47.0 | 0.0 |
+| 1.85.0 | 1,200-row table | 216.8 | 214.7 to 229.6 | 24.4 | 0.0 |
+| 1.85.0 | 100-section prose | 261.1 | 250.9 to 263.6 | 22.3 | 0.0 |
+| 1.85.0 | 50,000 code lines | 1078.7 | 1074.3 to 1079.3 | 91.8 | 83.0 |
 
 Timing starts at the capture-phase click and ends after the initial mounted frontier plus two animation frames. It includes cached native reads, worker startup, comparison, transfer and initial DOM construction. It excludes opening the native diff, every later page and first file loading. Every trial validates successful output and one changed source line. Raw records preserve input bytes, host load, actual viewport and observed callbacks.
 
@@ -55,6 +55,8 @@ Profiles separate the broad worker round trip from the remaining initial-view wo
 ## Resource limits and delivery
 
 The host checks 200,000 native lines before copying text and 8 million characters per side. The extension worker admits at most 262,144 serialized UTF-16 characters and 8,000 opening elements per paired materialized row/page or Source row. Supported paginated code is checked per page, not by total output. Oversized indivisible sections fail explicitly before DOM parsing; native source access remains. No text is silently truncated.
+
+Inline base64 images and minified single-line content can exceed the paired Source-row budget even when unchanged. Both sides count. Use the native source comparison for those files.
 
 View batches use row caps plus 32,768 characters or 8 ms of scheduling admission. One admitted row is indivisible. These are work-admission guards, not hard paint-time or peak-memory bounds. Worker computation has its existing 12-second timeout. Low-end machines, full traversal and other desktop platforms remain unmeasured.
 
@@ -74,7 +76,6 @@ npm run package:vscode
 npm run test:vscode:ide -- artifacts/markdown-diff-vscode-0.1.0.vsix
 MARKDOWN_DIFF_IDE_SCENARIO=restricted npm run test:vscode:ide -- artifacts/markdown-diff-vscode-0.1.0.vsix
 MARKDOWN_DIFF_IDE_SCENARIO=virtual npm run test:vscode:ide -- artifacts/markdown-diff-vscode-0.1.0.vsix
-npm run record:vscode
 ```
 
-Set `VSCODE_EXECUTABLE_PATH` and a distinct `MARKDOWN_DIFF_IDE_ARTIFACT_NAME` for another installed version. All profiles and extension directories are temporary. The CDP connection preserves Electron's browser context because older Electron does not implement Chromium's download-context controls. CI execution and council judgments are recorded separately on the PR.
+Set `VSCODE_EXECUTABLE_PATH` and a distinct `MARKDOWN_DIFF_IDE_ARTIFACT_NAME` for another installed version. All profiles and extension directories are temporary. The CDP connection preserves Electron's browser context because older Electron does not implement Chromium's download-context controls. Manual GitHub Actions runs also repeat the deep Source restoration case 20 times on Ubuntu. CI execution and council judgments are recorded separately on the PR.

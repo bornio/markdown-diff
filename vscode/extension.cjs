@@ -37,8 +37,7 @@ function html(webview, extensionUri) {
     </div>
     <div class="comparison-summary"><span id="status" role="status" aria-live="polite"></span><span id="stats"></span></div>
   </div>
-    <div id="notice" class="notice" role="alert" hidden></div>
-    <p class="image-notice">Images are placeholders. Source shows their exact Markdown.</p>
+    <div id="notice" class="notice" role="status" hidden></div>
     <section id="comparison" aria-label="Markdown comparison" tabindex="0" aria-busy="true"></section>
   </main>
   <script type="module" nonce="${nonce}" src="${escape(String(asset('webview.js')))}"></script>

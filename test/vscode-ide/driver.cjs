@@ -36,7 +36,6 @@ exports.run = async function () {
       writeFile: denyWrite, delete: denyWrite, rename: denyWrite, createDirectory: denyWrite,
     }, { isReadonly: true, isCaseSensitive: true });
   }
-  await extension.activate();
   let right;
   let currentPair;
   let providerFails = false;
@@ -64,6 +63,7 @@ exports.run = async function () {
   }
 
   async function act(request) {
+    if (request.op === 'activation-status') return extension.isActive;
     if (request.op === 'manual') {
       const leftUri = virtual ? vscode.Uri.parse('markdown-diff-fs:/workspace/before.md') : vscode.Uri.file(path.join(root, 'workspace', 'before.md'));
       const rightUri = virtual ? vscode.Uri.parse('markdown-diff-fs:/workspace/after.md') : vscode.Uri.file(path.join(root, 'workspace', 'after.md'));
@@ -218,7 +218,7 @@ exports.run = async function () {
   for (const name of ['extension.cjs', 'dist/webview.js', 'dist/webview.css']) {
     runtimeHashes[name] = createHash('sha256').update(await fs.readFile(path.join(extension.extensionPath, name))).digest('hex');
   }
-  await fs.writeFile(path.join(root, 'ready.json'), JSON.stringify({ ready: true, version: vscode.version, trusted: vscode.workspace.isTrusted, virtualWorkspace: !!vscode.workspace.workspaceFolders?.length && vscode.workspace.workspaceFolders.every(folder => folder.uri.scheme !== 'file'), extensionPath: extension.extensionPath, runtimeHashes }));
+  await fs.writeFile(path.join(root, 'ready.json'), JSON.stringify({ ready: true, initiallyActive: extension.isActive, version: vscode.version, trusted: vscode.workspace.isTrusted, virtualWorkspace: !!vscode.workspace.workspaceFolders?.length && vscode.workspace.workspaceFolders.every(folder => folder.uri.scheme !== 'file'), extensionPath: extension.extensionPath, runtimeHashes }));
   let requestId = 1;
   while (true) {
     const input = path.join(root, `request-${requestId}.json`);

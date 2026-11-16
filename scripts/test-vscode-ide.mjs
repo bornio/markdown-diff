@@ -282,6 +282,7 @@ async function verify() {
   }, { timeout: 30000 }).toBe(true);
   await expect.poll(async () => (await json(path.join(root, 'ready.json')))?.ready, { timeout: 60000 }).toBe(true);
   const runtime = await json(path.join(root, 'ready.json'));
+  assert.equal(runtime.initiallyActive, false, 'The installed extension must activate through the user action, not the test driver.');
   if (scenario === 'restricted') assert.equal(runtime.trusted, false, 'The restricted-mode scenario must actually be untrusted.');
   if (scenario === 'virtual') assert.equal(runtime.virtualWorkspace, true, 'The virtual scenario must actually use a virtual workspace.');
   const page = browser.contexts()[0].pages()[0];
@@ -305,6 +306,8 @@ async function verify() {
   }
   await titleAction.click();
   let frame = await comparisonFrame();
+  assert.equal(await request({ op: 'activation-status' }), true, 'The title action must activate the installed extension.');
+  record('The native title action activates the installed extension on demand');
   if (scenario !== 'virtual') await expect(frame.locator('#comparison')).toContainText('UNSAVED_ONLY');
   await expect(frame.locator('#comparison')).toContainText('Done');
   record(scenario === 'virtual' ? 'Title action renders the selected documents in a virtual workspace' : 'Editor title action uses the selected diff and includes unsaved text');
@@ -386,6 +389,7 @@ async function verify() {
   const narrowViewport = await frame.evaluate(() => ({ width: innerWidth, height: innerHeight, devicePixelRatio }));
   assert(narrowViewport.width >= 300 && narrowViewport.width <= 600, `Expected a narrow readable editor column, got ${narrowViewport.width}px.`);
   assert(await frame.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'The narrow zoomed preview must not overflow horizontally.');
+  await expect(frame.locator('#comparison h1').first()).toBeInViewport({ ratio: 1 });
   await audit(frame, 'narrow-200-percent');
   await page.screenshot({ path: path.join(output, 'narrow-zoom.png') });
   await request({ op: 'zoom', level: 0 });
