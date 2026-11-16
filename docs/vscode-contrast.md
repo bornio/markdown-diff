@@ -19,7 +19,7 @@ VSIX SHA-256: `ae8703777ebaa3ca6230acb8d68be209008128a1b67beb9810137b9352c00e35`
 | Restricted Mode | 1.146.0 | 7 | — | — | 2 |
 | Read-only virtual workspace | 1.146.0 | 7 | — | — | 2 |
 
-All four install the same archive in isolated profiles on one macOS arm64 host, assert matching loaded runtime bytes, and record identical harness hashes. The minimum application passes signature and Gatekeeper checks. Screen-reader support is explicitly enabled and asserted in the isolated app, keeping its autodetection question out of screenshots; this is not a manual assistive-technology study.
+All four install the same archive in isolated profiles on one macOS arm64 host, assert matching loaded runtime bytes, and record identical harness hashes. Screen-reader support is explicitly enabled and asserted in the isolated app, keeping its autodetection question out of screenshots; this is not a manual assistive-technology study.
 
 Both full runs enumerate every installed built-in theme and confirm its exact ID. Each theme records a precision-warning view, a failed Refresh retaining the comparison, and hover, pointer-pressed and keyboard-focus states for three buttons and four links. Interaction records sample the affected target. Pressed probes cancel the subsequent click; separate acceptance steps activate real Source, Refresh and pagination actions. Keyboard targets are hit-tested for occlusion, and focus outlines must fit their paint-containing ancestors.
 
@@ -37,6 +37,6 @@ Failing-before records reproduce native code/fill contrast, unnamed/image-only t
 
 Raw records, ratios, screenshots and audits are in ignored `artifacts/contrast2-ide-{current,minimum,restricted,virtual}/`; the suite log is `artifacts/contrast2-browser.log`. Earlier contrast reports remain under `artifacts/contrast-ide-*/` and the frozen council folders.
 
-The sampler composites uniform backgrounds and text alpha with an 8-bit canvas and WCAG sRGB luminance. It does not model arbitrary gradients or ancestor opacity. Disabled buttons are excluded; inactive link text and read-only task cues remain covered. Axe, geometry assertions and screenshots are separate evidence. Custom themes, user overrides, forced-color variations, other platforms and manual screen-reader behavior remain unproven.
+The sampler composites uniform backgrounds and text alpha with an 8-bit canvas and WCAG sRGB luminance. It does not model arbitrary gradients or ancestor opacity. Disabled buttons are excluded; inactive link text and read-only task cues remain covered. Supplementary format/image outlines, notice/error borders and native focus on summaries or scroll containers are outside its measured cue set. Axe, geometry assertions and screenshots are separate evidence. Custom themes, user overrides, forced-color variations, other platforms and manual screen-reader behavior remain unproven.
 
 The [earlier acceptance/performance record](vscode-verification.md) remains a dated pre-correction baseline. Its speed measurements belong to its recorded archive. This change makes no new speedup claim.

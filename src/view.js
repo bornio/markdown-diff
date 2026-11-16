@@ -1,6 +1,13 @@
 import { partners } from './partners.js';
 import { presentTables } from './tables.js';
 
+const RENDERED_BATCH_ROWS = 12;
+const SOURCE_BATCH_LINES = 80;
+const RENDERED_LOOKAHEAD_ROWS = 120;
+const SOURCE_LOOKAHEAD_LINES = 400;
+const PAGE_SIZE = 100;
+const ESTIMATED_ROW_HEIGHT = 100;
+
 export function createComparisonView(container, chrome, { renderDocument, onRendered, onError, batchLimits, chunkRows = 0 } = {}) {
   let comparison = null;
   let names = null;
@@ -174,7 +181,7 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       if (pager) {
         back.setAttribute('aria-disabled', String(page === 0));
         next.setAttribute('aria-disabled', String(page === row.pages.length - 1));
-        range.textContent = row.pageType === 'code' ? `Part ${page + 1} of ${row.pages.length}` : `Rows ${page * 100 + 1}–${Math.min((page + 1) * 100, row.itemCount)} of ${row.itemCount}`;
+        range.textContent = row.pageType === 'code' ? `Part ${page + 1} of ${row.pages.length}` : `Rows ${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, row.itemCount)} of ${row.itemCount}`;
       }
     };
     if (row.pages) {
@@ -220,7 +227,15 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
     const rows = mode === 'source' ? comparison.source.rows : comparison.rows;
     if (mode === 'source') root.style.setProperty('--source-digits', String(String(rows.length || 1).length));
     const bookmark = bookmarks[mode];
-    const view = { mode, root, more, rows, chunkSize: mode === 'rendered' ? chunkRows : 0, tail: null, pages: new Map(bookmark?.pages), restore: bookmark?.anchor ? { ...bookmark.anchor, passes: 0 } : null, position: 0, end: 0, scroll: 0, frame: 0, readyFrame: 0, mounted: false };
+    const view = {
+      mode, root, more, rows,
+      chunkSize: mode === 'rendered' ? chunkRows : 0,
+      tail: null,
+      pages: new Map(bookmark?.pages),
+      restore: bookmark?.anchor ? { ...bookmark.anchor, passes: 0 } : null,
+      position: 0, end: 0, scroll: 0,
+      frame: 0, readyFrame: 0, mounted: false,
+    };
     views.set(mode, view);
     return view;
   }
@@ -230,7 +245,9 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       view.frame = 0;
       if (view !== current) return;
       const source = view.mode === 'source';
-      const stop = Math.min(view.restore && batchLimits && !source ? Math.max(view.position + 12, view.restore.row) : view.position + (source ? 80 : 12), view.end);
+      let stop = view.position + (source ? SOURCE_BATCH_LINES : RENDERED_BATCH_ROWS);
+      if (view.restore && batchLimits && !source) stop = Math.max(stop, view.restore.row);
+      stop = Math.min(stop, view.end);
       const fragment = document.createDocumentFragment();
       const started = batchLimits ? performance.now() : 0;
       let characters = 0;
@@ -242,16 +259,18 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
         fragment.append(buildRow(row, source, view.position++, view));
         characters += cost;
       }
-      if (view.chunkSize) for (const node of [...fragment.childNodes]) {
-        if (node.comparisonRow % view.chunkSize === 0) {
-          view.tail = document.createElement('div');
-          view.tail.className = 'row-chunk';
-          view.tail.style.containIntrinsicBlockSize = `auto ${Math.min(view.chunkSize, view.rows.length - node.comparisonRow) * 100}px`;
-          visible.observe(view.tail);
-          resized.observe(view.tail);
-          fragment.append(view.tail);
+      if (view.chunkSize) {
+        for (const node of [...fragment.childNodes]) {
+          if (node.comparisonRow % view.chunkSize === 0) {
+            view.tail = document.createElement('div');
+            view.tail.className = 'row-chunk';
+            view.tail.style.containIntrinsicBlockSize = `auto ${Math.min(view.chunkSize, view.rows.length - node.comparisonRow) * ESTIMATED_ROW_HEIGHT}px`;
+            visible.observe(view.tail);
+            resized.observe(view.tail);
+            fragment.append(view.tail);
+          }
+          view.tail.append(node);
         }
-        view.tail.append(node);
       }
       view.root.append(fragment);
       if (view.position < view.end) view.frame = requestAnimationFrame(() => step(view));
@@ -297,7 +316,8 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       incremental.disconnect();
       view.more.remove();
       view.mounted = false;
-      view.end = Math.min(Math.max(view.position + (view.mode === 'source' ? 400 : 120), view.restore ? view.restore.row + (view.mode === 'source' ? 400 : 120) : 0), view.rows.length);
+      const lookahead = view.mode === 'source' ? SOURCE_LOOKAHEAD_LINES : RENDERED_LOOKAHEAD_ROWS;
+      view.end = Math.min(Math.max(view.position + lookahead, view.restore ? view.restore.row + lookahead : 0), view.rows.length);
       step(view);
     });
   }
@@ -447,7 +467,8 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
   const cancelRestore = () => {
     if (!current?.restore) return;
     current.restore = null;
-    current.end = Math.min(current.end, Math.max(current.position, current.mode === 'source' ? 400 : 120));
+    const minimum = current.mode === 'source' ? SOURCE_LOOKAHEAD_LINES : RENDERED_LOOKAHEAD_ROWS;
+    current.end = Math.min(current.end, Math.max(current.position, minimum));
   };
   window.addEventListener('wheel', cancelRestore, { passive: true });
   window.addEventListener('keydown', event => { if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) cancelRestore(); });
