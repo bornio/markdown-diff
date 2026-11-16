@@ -39,7 +39,15 @@ The page link keeps the whole choice, for example `?gh=https://github.com/owner/
 
 The page reads history from the GitHub API, which allows 60 requests an hour from one network without signing in. Opening a repository file uses one request per 100 commits; a gist uses two. File text comes from GitHub's raw file hosts, which don't count toward that limit. Images with relative paths in a GitHub file don't load.
 
+## VS Code extension
+
+Open a Markdown text diff in VS Code, then choose **Markdown Diff: Render this comparison**. The extension displays the pair as a rendered snapshot. **Open live Source diff** returns to the original native comparison for editing. Source can change while the preview keeps its captured text. Return to the preview to check for changes, then choose **Refresh** to capture them. Running **Render this comparison** again also captures the current text.
+
+Run `npm run package:vscode` to create `artifacts/markdown-diff-vscode-0.1.0.vsix`. See the [extension guide](vscode/README.md) for installation, supported inputs, limits, and test commands.
+
 ## Development
+
+The [VS Code verification report](docs/vscode-verification.md) records installed-package checks, accessibility audits, responsiveness observations, and their limits.
 
 Use Node.js 24. The browser tests run in your installed Google Chrome.
 

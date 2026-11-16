@@ -1,0 +1,126 @@
+:root {
+  color-scheme:light dark;
+  font-family:var(--vscode-font-family,system-ui,sans-serif);
+  color:var(--text);
+  background:var(--vscode-editor-background,#151618);
+  --page:var(--vscode-editor-background,#151618);
+  --text:var(--vscode-editor-foreground,#d8d9dd);
+  --ink:var(--vscode-foreground,var(--text));
+  --heading:var(--text);
+  --strong:var(--text);
+  --muted:var(--vscode-descriptionForeground,var(--ink));
+  --subtle:var(--muted);
+  --border:var(--vscode-panel-border,#454545);
+  --border-strong:var(--vscode-contrastBorder,var(--focus));
+  --surface:var(--vscode-editorWidget-background,var(--page));
+  --control:var(--vscode-button-secondaryBackground,#303238);
+  --secondary-text:var(--vscode-button-secondaryForeground,var(--text));
+  --hover:var(--vscode-button-secondaryHoverBackground,var(--control));
+  --focus:var(--vscode-focusBorder,#007fd4);
+  --pressed:var(--hover);
+  --code:var(--vscode-textCodeBlock-background,var(--surface));
+  --code-border:var(--border);
+  --inline-code:var(--code);
+  --checkbox:var(--vscode-checkbox-background,var(--surface));
+  --quote:var(--ink);
+  --quote-border:var(--vscode-textBlockQuote-border,var(--border));
+  --table-border:var(--border);
+  --table-header:var(--surface);
+  --table-alt:transparent;
+  --link:var(--vscode-textLink-foreground,#9bbfe8);
+  --green:var(--vscode-gitDecoration-addedResourceForeground,#81c784);
+  --red:var(--vscode-gitDecoration-deletedResourceForeground,#e57373);
+  --add:var(--vscode-diffEditor-insertedLineBackground,#2ea04320);
+  --remove:var(--vscode-diffEditor-removedLineBackground,#f8514920);
+  --word-add:var(--vscode-diffEditor-insertedTextBackground,#2ea04340);
+  --word-add-text:var(--ink);
+  --word-remove:var(--vscode-diffEditor-removedTextBackground,#f8514940);
+  --word-remove-text:var(--ink);
+  --add-marker:var(--green);
+  --remove-marker:var(--red);
+  --format:var(--vscode-editorInfo-foreground,var(--text));
+  --notice:var(--surface);
+  --notice-text:var(--ink);
+  --notice-border:var(--vscode-inputValidation-warningBorder,var(--border));
+  --error:var(--surface);
+  --error-text:var(--ink);
+  --error-border:var(--vscode-inputValidation-errorBorder,var(--red));
+}
+:root:has(body.vscode-light) {
+  --text:color-mix(in srgb,var(--vscode-editor-foreground,#333) 80%,#000);
+  --ink:color-mix(in srgb,var(--vscode-foreground,#616161) 70%,#000);
+  --muted:color-mix(in srgb,var(--vscode-descriptionForeground,#717171) 85%,#000);
+  --focus:color-mix(in srgb,var(--vscode-focusBorder,#007fd4) 80%,#000);
+}
+:root:has(body.vscode-high-contrast,body.vscode-high-contrast-light) { --muted:var(--ink); }
+:root:has(body.vscode-dark) { --focus:color-mix(in srgb,var(--vscode-focusBorder,#007fd4) 80%,#fff); }
+body { padding:0; color:var(--text); }
+.extension-toolbar {
+  position:sticky;
+  top:0;
+  z-index:10;
+  background:var(--page);
+  border-bottom:1px solid var(--border);
+  padding:12px 20px;
+}
+.comparison-metadata { padding:0 20px; }
+.extension-actions { display:flex; gap:12px; align-items:center; justify-content:space-between; }
+.extension-actions button { min-height:32px; color:var(--secondary-text); }
+.table-pager button { color:var(--secondary-text); }
+.source-label { margin:8px 0 4px; font-size:13px; font-weight:600; overflow-wrap:anywhere; }
+.snapshot-label,.source-status { margin:0 0 8px; font-size:11px; line-height:1.5; color:var(--muted); }
+.document-labels { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; }
+.document-labels>div { display:flex; align-items:baseline; flex-wrap:wrap; gap:3px 6px; min-width:0; padding-bottom:4px; font-size:12px; overflow-wrap:anywhere; }
+.side-label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.comparison-metadata .comparison-summary { padding:4px 0; flex-direction:row; align-items:flex-start; text-align:left; flex-wrap:wrap; gap:6px 20px; font-size:11px; }
+.notice { margin:12px 20px; }
+#comparison { padding:8px 0 40px; }
+.document-cell { font-size:var(--vscode-markdown-font-size,14px); padding-inline:24px; }
+.document-cell h1 { font-size:2em; padding-bottom:8px; }
+.document-cell pre,.document-cell code { font-family:var(--vscode-editor-font-family,ui-monospace,monospace); color:inherit; }
+.document-cell :is(blockquote,th,[data-change],ins[data-edit],del[data-edit]),.image-placeholder {
+  --text:var(--ink);
+  --heading:var(--ink);
+  --strong:var(--ink);
+  --muted:var(--ink);
+  --subtle:var(--ink);
+  --link:var(--ink);
+  --focus:var(--ink);
+  --border-strong:var(--ink);
+  color:var(--ink);
+}
+.document-cell blockquote { background:var(--vscode-textBlockQuote-background,transparent); }
+.document-cell a:active { background:transparent; }
+.document-cell a:focus-visible { outline-offset:0; }
+.document-cell input[type=checkbox]:checked { border-color:var(--ink); }
+.document-cell input[type=checkbox]:checked:after { border-color:var(--vscode-checkbox-foreground,var(--ink)); }
+.image-placeholder {
+  display:inline;
+  padding:2px 5px;
+  border:1px dashed var(--border-strong);
+  border-radius:4px;
+  color:var(--muted);
+  background:var(--surface);
+  font-size:12px;
+  -webkit-box-decoration-break:clone;
+  box-decoration-break:clone;
+}
+.image-placeholder:is([data-change=remove],[data-edit=remove]) { outline:2px solid var(--remove-marker); }
+.image-placeholder:is([data-change=add],[data-edit=add]) { outline:2px solid var(--add-marker); }
+.document-cell a[aria-disabled=true] { color:var(--muted); text-decoration:underline dotted; cursor:default; }
+body.vscode-high-contrast .document-cell [data-edit],body.vscode-high-contrast-light .document-cell [data-edit] { outline:1px solid currentColor; outline-offset:-1px; }
+body.vscode-high-contrast,body.vscode-high-contrast-light {
+  --control:var(--page);
+  --hover:var(--page);
+  --pressed:var(--page);
+  --secondary-text:var(--text);
+}
+@media(max-width:600px) {
+  .extension-toolbar,.comparison-metadata { padding-inline:12px; }
+  .document-cell { padding-inline:14px; font-size:13px; }
+  .document-cell[data-change-cue]:before { left:4px; }
+}
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
+
+.row-chunk { content-visibility:auto; }
+.row-chunk > .pair-row { content-visibility:visible; contain:layout style paint; }

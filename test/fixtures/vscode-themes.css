@@ -1,0 +1,105 @@
+:root {
+  --vscode-gitDecoration-addedResourceForeground:#587c0c;
+  --vscode-gitDecoration-deletedResourceForeground:#ad0707;
+  --vscode-button-secondaryForeground:#616161;
+  --vscode-button-secondaryBackground:#e0e0e0;
+  --vscode-editorWidget-background:#f3f3f3;
+  --vscode-textLink-foreground:#006ab1;
+  --vscode-foreground:#616161;
+  --vscode-descriptionForeground:#717171;
+  --vscode-textCodeBlock-background:rgba(220,220,220,.4);
+  --vscode-textPreformat-foreground:#a31515;
+  --vscode-textPreformat-background:rgba(0,0,0,.1);
+  --vscode-diffEditor-insertedLineBackground:rgba(155,185,85,.2);
+  --vscode-diffEditor-removedLineBackground:rgba(255,0,0,.2);
+  --vscode-diffEditor-insertedTextBackground:rgba(156,204,44,.25);
+  --vscode-diffEditor-removedTextBackground:rgba(255,0,0,.2);
+}
+:root[data-vscode-theme-id="Quiet Light"] {
+  --vscode-focusBorder:#9769dc;
+  --vscode-editor-foreground:#333333;
+  --vscode-editor-background:#f5f5f5;
+}
+:root[data-vscode-theme-id="Solarized Light"] {
+  --vscode-focusBorder:#b49471;
+  --vscode-editor-foreground:#657b83;
+  --vscode-editor-background:#fdf6e3;
+  --vscode-editorWidget-background:#eee8d5;
+  --vscode-button-secondaryBackground:#f5eaca;
+}
+:root[data-vscode-theme-id="Default High Contrast Light"] {
+  --vscode-gitDecoration-addedResourceForeground:#374e06;
+  --vscode-foreground:#292929;
+  --vscode-editor-foreground:#292929;
+  --vscode-editor-background:#ffffff;
+  --vscode-editorWidget-background:#ffffff;
+  --vscode-descriptionForeground:rgba(41,41,41,.7);
+  --vscode-textCodeBlock-background:#f2f2f2;
+  --vscode-textPreformat-foreground:#ffffff;
+  --vscode-textPreformat-background:#09345f;
+  --vscode-textLink-foreground:#0f4a85;
+  --vscode-diffEditor-insertedLineBackground:initial;
+  --vscode-diffEditor-removedLineBackground:initial;
+  --vscode-diffEditor-insertedTextBackground:initial;
+  --vscode-diffEditor-removedTextBackground:initial;
+}
+:root[data-vscode-theme-id="Abyss"] {
+  --vscode-focusBorder:#596f99;
+  --vscode-gitDecoration-addedResourceForeground:#81b88b;
+  --vscode-gitDecoration-deletedResourceForeground:#c74e39;
+  --vscode-inputValidation-warningBackground:#5b7e7a;
+  --vscode-foreground:#cccccc;
+  --vscode-editor-foreground:#6688cc;
+  --vscode-editor-background:#000c18;
+  --vscode-button-secondaryForeground:#cccccc;
+  --vscode-button-secondaryBackground:#061940;
+  --vscode-editorWidget-background:#262641;
+  --vscode-descriptionForeground:rgba(204,204,204,.7);
+  --vscode-textCodeBlock-background:rgba(10,10,10,.4);
+  --vscode-textPreformat-foreground:#d7ba7d;
+  --vscode-textPreformat-background:rgba(255,255,255,.1);
+  --vscode-textLink-foreground:#3794ff;
+  --vscode-diffEditor-insertedTextBackground:rgba(49,149,138,.33);
+  --vscode-diffEditor-removedTextBackground:rgba(137,47,70,.53);
+}
+:root[data-vscode-theme-id="Monokai Dimmed"] {
+  --vscode-foreground:#cccccc;
+  --vscode-editor-foreground:#c5c8c6;
+  --vscode-editor-background:#1e1e1e;
+  --vscode-focusBorder:#3655b5;
+  --vscode-descriptionForeground:rgba(204,204,204,.7);
+  --vscode-editorWidget-background:#252526;
+  --vscode-button-secondaryForeground:#cccccc;
+  --vscode-button-secondaryBackground:#444444;
+  --vscode-checkbox-background:#525252;
+  --vscode-checkbox-foreground:#f0f0f0;
+  --vscode-textCodeBlock-background:rgba(10,10,10,.4);
+  --vscode-textLink-foreground:#3794ff;
+  --vscode-gitDecoration-addedResourceForeground:#81b88b;
+  --vscode-gitDecoration-deletedResourceForeground:#c74e39;
+}
+:root[data-vscode-theme-id="Tomorrow Night Blue"] {
+  --vscode-foreground:#cccccc;
+  --vscode-editor-foreground:#ffffff;
+  --vscode-editor-background:#002451;
+  --vscode-focusBorder:#bbdaff;
+  --vscode-descriptionForeground:rgba(204,204,204,.7);
+  --vscode-editorWidget-background:#001c40;
+  --vscode-button-secondaryForeground:#cccccc;
+  --vscode-button-secondaryBackground:#ffffff30;
+  --vscode-button-secondaryHoverBackground:#ffffff30;
+  --vscode-checkbox-background:#001733;
+  --vscode-checkbox-foreground:#f0f0f0;
+  --vscode-textCodeBlock-background:rgba(10,10,10,.4);
+  --vscode-textLink-foreground:#3794ff;
+  --vscode-gitDecoration-addedResourceForeground:#81b88b;
+  --vscode-gitDecoration-deletedResourceForeground:#c74e39;
+}
+body {
+  color:var(--vscode-editor-foreground);
+  background-color:var(--vscode-editor-background);
+}
+code {
+  color:var(--vscode-textPreformat-foreground);
+  background-color:var(--vscode-textPreformat-background);
+}
