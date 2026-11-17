@@ -6,7 +6,7 @@ Read Markdown changes as rendered tables, lists, headings, and text. The extensi
 
 Requires desktop **Visual Studio Code 1.85 or newer**.
 
-Open [Markdown Diff on the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=bornio.markdown-diff-vscode) and choose **Install**, or search for `bornio.markdown-diff-vscode` in VS Code's Extensions view. Install **Markdown Diff** by **bornio**.
+Open [Markdown Diff on the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=bornio.markdown-diff-vscode) and choose **Install**, or search for `bornio.markdown-diff-vscode` in VS Code's Extensions view. Install **Markdown Diff Preview by bornio**.
 
 Or install from a terminal:
 
