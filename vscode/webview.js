@@ -21,10 +21,13 @@ const display = createComparisonView(comparison, { scrollTo(target) {
   window.scrollTo({ top, behavior: 'instant' });
 } }, { renderDocument, onPresented: commitDraw, onViewStateChanged: persist, onError: failDraw, batchLimits: previewLimits.batch, chunkRows: 64 });
 
-function persist() {
+function persist(viewState) {
   clearTimeout(scrollSave);
   scrollSave = 0;
-  if (screen.kind === 'visible') vscode.setState({ snapshotId: screen.good.snapshot.captureId, view: { rendered: display.getState().rendered } });
+  if (screen.kind === 'visible') {
+    const view = viewState || display.getState();
+    vscode.setState({ snapshotId: screen.good.snapshot.captureId, view: { rendered: view.rendered } });
+  }
 }
 
 function update() {
@@ -129,22 +132,22 @@ function sentence(message) {
 }
 
 function draw(value, kind, bookmark = null) {
-  screen = kind === 'candidate' ? { kind, value, good: screen.good || null } : { kind: 'restoring', good: value };
+  screen = { kind, value, good: screen.good || null };
   try {
     display.reset(value.result, { before: value.snapshot.before.label, after: value.snapshot.after.label }, bookmark);
     display.show('rendered');
-  } catch (error) { failDraw(error); }
+  } catch (cause) { failDraw(cause); }
   update();
 }
 
-function commitDraw() {
+function commitDraw(viewState) {
   if (screen.kind !== 'candidate' && screen.kind !== 'restoring') return;
   const completed = screen;
-  const good = completed.kind === 'candidate' ? completed.value : completed.good;
+  const good = completed.value;
   screen = { kind: 'visible', good };
   describe(good.snapshot);
   if (completed.kind === 'candidate') vscode.postMessage({ type: 'comparisonRendered', captureId: good.snapshot.captureId });
-  persist();
+  persist(viewState);
   update();
 }
 
@@ -174,7 +177,7 @@ function beginRead() {
   stopWork();
   capture.work = { kind: 'reading' };
   if (screen.kind === 'stopped') screen = { kind: 'empty' };
-  else if (screen.kind === 'candidate' || screen.kind === 'restoring') {
+  else if (screen.kind === 'candidate') {
     if (screen.good) draw(screen.good, 'restoring');
     else { screen = { kind: 'empty' }; display.reset(); }
   }
@@ -182,7 +185,7 @@ function beginRead() {
 
 function compare(snapshot, purpose) {
   stopWork();
-  const work = { kind: 'computing', snapshot, purpose, captureId: capture.id, worker: null, timeout: null };
+  const work = { kind: 'computing', snapshot, purpose, worker: null, timeout: null };
   capture.work = work;
   const fail = (message) => {
     if (capture.work !== work) return;
@@ -195,8 +198,7 @@ function compare(snapshot, purpose) {
   try { work.worker = new ComparisonWorker(); }
   catch { fail('The comparison worker could not start. Reload the preview or reinstall the extension.'); return; }
   work.worker.onmessage = ({ data }) => {
-    const snapshot = work.snapshot;
-    if (capture.work !== work || capture.id !== work.captureId || data?.requestId !== snapshot.captureId) return;
+    if (capture.work !== work || data?.requestId !== snapshot.captureId) return;
     if (data.status === 'error' && typeof data.message === 'string') { fail(data.message); return; }
     if (data.status !== 'ready' || !data.comparison) { fail('The comparison worker returned an invalid result. Refresh to try again.'); return; }
     stopWork();
@@ -219,7 +221,7 @@ function receiveCapture(data) {
   $('#source-label').textContent = data.sourceLabel;
   if (data.status !== 'reading' && screen.kind !== 'stopped' && data.snapshot && Number.isInteger(data.snapshot.captureId)) {
     const alreadyGood = data.snapshot.captureId === screen.good?.snapshot.captureId;
-    const drawing = screen.kind === 'candidate' && data.snapshot.captureId === screen.value.snapshot.captureId;
+    const drawing = data.snapshot.captureId === screen.value?.snapshot.captureId;
     if (!alreadyGood && !drawing && data.snapshot.captureId !== capture.attemptedSnapshotId) {
       capture.attemptedSnapshotId = data.snapshot.captureId;
       compare(data.snapshot, data.status === 'error' ? 'restoring' : 'candidate');

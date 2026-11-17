@@ -97,13 +97,14 @@ test('the shared view presents once and reports subsequent settled pages, prefix
     ] };
     window.viewNotifications = [];
     const display = createComparisonView(container, { scrollTo: target => scrollTo(0, typeof target === 'number' ? target : scrollY + target.getBoundingClientRect().top) }, {
-      onPresented: () => window.viewNotifications.push({ type: 'presented', state: display.getState() }),
-      onViewStateChanged: () => window.viewNotifications.push({ type: 'changed', state: display.getState() }),
+      onPresented: state => window.viewNotifications.push({ type: 'presented', state }),
+      onViewStateChanged: state => window.viewNotifications.push({ type: 'changed', state }),
     });
     display.reset({ rows, source: { rows: [] } }, { before: 'Before', after: 'After' });
     display.show('rendered');
   });
   await expect.poll(() => page.evaluate(() => window.viewNotifications.filter(event => event.type === 'presented').length)).toBe(1);
+  expect(await page.evaluate(() => window.viewNotifications[0].state.rendered.pages)).toEqual([]);
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.viewNotifications.findLast(event => event.type === 'changed')?.state.rendered.pages)).toEqual([[0, 1]]);
   const changes = await page.evaluate(() => window.viewNotifications.filter(event => event.type === 'changed').length);

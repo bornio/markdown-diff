@@ -303,10 +303,9 @@ export function createComparisonView(container, chrome, { renderDocument, onPres
         view.mounted = true;
         const firstPresentation = !view.presented;
         view.presented = true;
-        if (firstPresentation) onPresented?.();
-        else onViewStateChanged?.();
-        if (view !== current) return;
         bookmarks = getState();
+        if (firstPresentation) onPresented?.(bookmarks);
+        else onViewStateChanged?.(bookmarks);
       }));
     }));
   }

@@ -502,6 +502,50 @@ test('a nonzero rendered page survives a real preview reload', async ({ page }) 
   await expect(page.locator('.document-cell[data-side=after]')).toContainText('Updated 220');
 });
 
+test('restored provenance stays hidden until its first presentation completes', async ({ page }) => {
+  const { host, panel } = await openPreview(page);
+  host.documents.clear();
+  await panel.receive({ type: 'refresh' });
+  await expect(page.locator('#notice')).toContainText('Refresh failed');
+  await page.addInitScript(() => {
+    window.restoreMetadata = [];
+    new MutationObserver(() => {
+      if (document.querySelector('#comparison .pair-row') && document.querySelector('#status')?.textContent === 'Restoring previous snapshot…') {
+        window.restoreMetadata.push({ stats: document.querySelector('#stats').textContent, before: document.querySelector('#before-label').textContent });
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await page.reload();
+  await expect(page.locator('#snapshot-label')).toContainText('Snapshot captured');
+  await expect(page.locator('#stats')).toContainText('Lines');
+  const duringRestore = await page.evaluate(() => window.restoreMetadata);
+  expect(duringRestore.length).toBeGreaterThan(0);
+  expect(duringRestore.every(value => value.stats === '' && value.before === '')).toBe(true);
+});
+
+test('Refresh while drawing restores the previous view only once', async ({ page }) => {
+  const { refresh } = await openPreview(page);
+  await page.evaluate(() => {
+    window.restoredRows = 0;
+    const append = Element.prototype.append;
+    Element.prototype.append = function (...nodes) {
+      const result = append.apply(this, nodes);
+      if (this.classList.contains('pair-row') && this.querySelector('td')?.textContent === 'Build') window.restoredRows++;
+      return result;
+    };
+    new MutationObserver((_, observer) => {
+      if (!document.querySelector('#comparison').textContent.includes('REPLACEMENT_DRAW')) return;
+      observer.disconnect();
+      document.querySelector('#refresh').click();
+    }).observe(document.querySelector('#comparison'), { childList: true, subtree: true });
+  });
+  const candidate = Array.from({ length: 200 }, (_, i) => `REPLACEMENT_DRAW ${i}.`).join('\n\n');
+  await refresh([candidate, candidate.replace('199.', 'changed 199.')]);
+  await expect.poll(() => page.evaluate(() => window.messages.some(message => message.type === 'comparisonRendered' && message.captureId === 3))).toBe(true);
+  expect(await page.evaluate(() => window.restoredRows)).toBe(1);
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+});
+
 test('one presentation acknowledgment survives page turns, resize, and later scrolling batches', async ({ page }) => {
   const list = Array.from({ length: 230 }, (_, i) => `- Item ${i + 1}`).join('\n');
   const text = `${list}\n\n${Array.from({ length: 240 }, (_, i) => `Section ${i}.`).join('\n\n')}`;
