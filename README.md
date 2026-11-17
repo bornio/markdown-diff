@@ -44,7 +44,7 @@ The page reads history from the GitHub API, which allows 60 requests an hour fro
 Requires desktop **Visual Studio Code 1.85 or newer**.
 
 1. Open [Markdown Diff on the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=bornio.markdown-diff-vscode) and choose **Install**, or search for `bornio.markdown-diff-vscode` in VS Code's Extensions view.
-2. Install **Markdown Diff** by **bornio**. Keep **Auto Update** enabled for this extension to receive new versions automatically.
+2. Install **Markdown Diff Preview by bornio**. Keep **Auto Update** enabled for this extension to receive new versions automatically.
 3. Open a Markdown comparison from Source Control, or use **Select for Compare** and **Compare with Selected** in Explorer. Run **Markdown Diff: Render this comparison**.
 
 No Node.js or local build is needed. If you previously installed a VSIX, right-click **Markdown Diff** in the Extensions view and enable **Auto Update**; VSIX installation disables it by default. The extension keeps the same ID, `bornio.markdown-diff-vscode`.
