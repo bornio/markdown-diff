@@ -2,6 +2,24 @@
 
 Read Markdown changes as rendered tables, lists, headings, and text. The extension uses the comparison already open in VS Code.
 
+## Install
+
+Requires desktop **Visual Studio Code 1.85 or newer**.
+
+1. [Download the latest VSIX](https://github.com/bornio/markdown-diff/releases/latest/download/markdown-diff-vscode.vsix).
+2. Open the Command Palette (⌘⇧P on macOS, Ctrl+Shift+P on Windows/Linux), run **Extensions: Install from VSIX...**, and choose the downloaded file.
+3. Reload the window if VS Code requests it.
+
+Or install the downloaded file from a terminal:
+
+```sh
+code --install-extension ./markdown-diff-vscode.vsix
+```
+
+To update, download and install the latest VSIX again. These GitHub releases do not update automatically through the Marketplace. [Release notes, checksums and older versions](https://github.com/bornio/markdown-diff/releases) remain available; install an older VSIX to roll back.
+
+## Use
+
 1. Open a Markdown text comparison from Source Control, or use **Select for Compare** and **Compare with Selected** in Explorer.
 2. Choose **Markdown Diff: Render this comparison** from the Command Palette or the preview button in the diff editor title.
 3. Choose **Open live Source diff** to return to the original native comparison. Edit in VS Code, then choose **Refresh** in the preview.
@@ -24,17 +42,17 @@ Recovery uses the last confirmed snapshot, with matching content and timestamp. 
 
 The preview follows the editor's theme and fonts, including high contrast. Controls work with Tab, Enter, and Space. Text can be selected and copied. Editing, saving, undo, and staging remain in VS Code.
 
-## Install locally
+## Build from source
 
 Build from the repository root with Node.js 24 or newer.
 
 ```sh
 npm ci
 npm run package:vscode
-code --install-extension artifacts/markdown-diff-vscode-0.1.0.vsix
+code --install-extension "artifacts/markdown-diff-vscode-$(node -p 'require("./vscode/package.json").version').vsix"
 ```
 
-You can also choose **Extensions: Install from VSIX** in VS Code. The package requires desktop VS Code 1.85 or newer. Browser VS Code and provider-specific remote behavior require separate verification. The repository's verification report records the exact tested versions and environments.
+Browser VS Code and provider-specific remote behavior require separate verification. The repository's verification report records the exact tested versions and environments.
 
 ## Develop and test
 
@@ -48,7 +66,7 @@ npm run test:vscode
 To test the installed package in an isolated profile, run this from the repository root.
 
 ```sh
-npm run test:vscode:ide -- artifacts/markdown-diff-vscode-0.1.0.vsix
+npm run test:vscode:ide -- "artifacts/markdown-diff-vscode-$(node -p 'require("./vscode/package.json").version').vsix"
 ```
 
 The IDE runner uses the installed macOS VS Code by default. Set `VSCODE_EXECUTABLE_PATH` for another executable. Set `MARKDOWN_DIFF_IDE_SCENARIO=restricted` or `virtual` for the additional capability checks. Reports, runtime hashes, accessibility audits, screenshots, and responsiveness observations are written to `artifacts/`. Each installed run asserts that its loaded runtime matches the requested VSIX. The repository verification summary records one dated candidate; new candidates keep their own results.

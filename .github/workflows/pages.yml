@@ -45,6 +45,43 @@ jobs:
         with:
           path: dist
 
+  release-extension:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: markdown-diff-vscode-${{ github.sha }}
+          path: artifacts
+      - name: Publish a new extension version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version=$(jq -r '.version' vscode/package.json)
+          tag="vscode-v${version}"
+          if published=$(gh release view "$tag" --json isDraft --jq '.isDraft | not' 2>/dev/null); then
+            if [ "$published" = true ]; then
+              echo "${tag} is already published; bump vscode/package.json to release an update."
+              exit 0
+            fi
+            echo "::error::${tag} exists as a draft; finish or remove it before retrying."
+            exit 1
+          fi
+          cp "artifacts/markdown-diff-vscode-${version}.vsix" artifacts/markdown-diff-vscode.vsix
+          (cd artifacts && sha256sum markdown-diff-vscode.vsix > SHA256SUMS)
+          gh release create "$tag" artifacts/markdown-diff-vscode.vsix artifacts/SHA256SUMS \
+            --target "$GITHUB_SHA" --title "Markdown Diff for VS Code ${version}" --latest \
+            --notes "Download markdown-diff-vscode.vsix, then run Extensions: Install from VSIX in VS Code. Requires desktop VS Code 1.85 or newer. To update, install the new VSIX and reload the window. [Usage and limits](https://github.com/${GH_REPO}/blob/${GITHUB_SHA}/vscode/README.md)." \
+            --generate-notes
+
   deploy:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: check

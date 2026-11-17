@@ -5,7 +5,7 @@ Compare Markdown files side by side, with changes inside rendered tables, lists,
 <img width="2048" height="1036" alt="image" src="https://github.com/user-attachments/assets/04d9bfb6-b30e-47d5-bb59-5cffd4c0f370" />
 
 
-[Open the app](https://bornio.github.io/markdown-diff/) · [Try the example](https://bornio.github.io/markdown-diff/example/)
+[Open the app](https://bornio.github.io/markdown-diff/) · [Try the example](https://bornio.github.io/markdown-diff/example/) · [Download the VS Code extension](https://github.com/bornio/markdown-diff/releases/latest/download/markdown-diff-vscode.vsix)
 
 ## Compare files
 
@@ -41,9 +41,17 @@ The page reads history from the GitHub API, which allows 60 requests an hour fro
 
 ## VS Code extension
 
-Open a Markdown text diff in VS Code, then choose **Markdown Diff: Render this comparison**. The extension displays the pair as a rendered snapshot. **Open live Source diff** returns to the original native comparison for editing. Source can change while the preview keeps its captured text. Return to the preview to check for changes, then choose **Refresh** to capture them. Running **Render this comparison** again also captures the current text.
+Requires desktop **Visual Studio Code 1.85 or newer**.
 
-Run `npm run package:vscode` to create `artifacts/markdown-diff-vscode-0.1.0.vsix`. See the [extension guide](vscode/README.md) for installation, supported inputs, limits, and test commands.
+1. [Download the latest extension](https://github.com/bornio/markdown-diff/releases/latest/download/markdown-diff-vscode.vsix).
+2. In VS Code, open the Command Palette (⌘⇧P on macOS, Ctrl+Shift+P on Windows/Linux), run **Extensions: Install from VSIX...**, and select the downloaded file.
+3. Open a Markdown comparison from Source Control, or use **Select for Compare** and **Compare with Selected** in Explorer. Run **Markdown Diff: Render this comparison**.
+
+No Node.js or local build is needed. To update, install the latest VSIX again and run **Developer: Reload Window** if prompted. GitHub downloads do not provide Marketplace automatic updates. [Release notes and older versions](https://github.com/bornio/markdown-diff/releases) are available for rollback.
+
+The extension displays the pair as a rendered snapshot. **Open live Source diff** returns to the original native comparison for editing. Source can change while the preview keeps its captured text. Return to the preview to check for changes, then choose **Refresh** to capture them. Running **Render this comparison** again also captures the current text.
+
+See the [extension guide](vscode/README.md) for CLI installation, supported inputs, limits and development commands.
 
 ## Development
 
@@ -65,6 +73,8 @@ npm run check
 ## Deployment
 
 GitHub Actions runs `npm run check` for pull requests and `main`. After that check, a push or manual run on `main` deploys to GitHub Pages. Pull requests do not deploy. The build produces static HTML, CSS, JavaScript, and SVG files in `dist/`. The example has its own `example/index.html`, so direct links work on a static host.
+
+CI also runs the extension checks, builds its VSIX and keeps it as a workflow artifact on every pull request and `main` build. After successful checks on `main`, a new version in `vscode/package.json` is automatically published as a GitHub Release tagged `vscode-v<version>`, with the tested VSIX and `SHA256SUMS`. Existing releases are never overwritten. To release an update, bump that version in a PR and merge after CI passes. A manual workflow run on `main` can retry a failed publication.
 
 To use another host, deploy `dist/`. For a subdirectory, set the same base path when building and previewing. The default is `/`.
 
