@@ -76,6 +76,83 @@ async function mockGitHub(page, { fail = null, paged = false } = {}) {
 
 test.beforeEach(async ({ page }) => { await page.goto('./'); });
 
+async function routeViewModules(page) {
+  await page.route('**/lifecycle-view/*.js', async route => {
+    const name = new URL(route.request().url()).pathname.split('/').pop();
+    if (!['view.js', 'partners.js', 'tables.js'].includes(name)) return route.abort();
+    return route.fulfill({ body: await readFile(new URL(`../src/${name}`, import.meta.url)), contentType: 'text/javascript' });
+  });
+}
+
+test('the shared view presents once and reports subsequent settled pages, prefixes, and resize', async ({ page }) => {
+  await routeViewModules(page);
+  await page.evaluate(async () => {
+    const { createComparisonView } = await import('./lifecycle-view/view.js');
+    const container = document.createElement('section');
+    document.body.replaceChildren(container);
+    const rows = Array.from({ length: 250 }, (_, i) => ({ kind: 'same', before: `<p>Section ${i}</p>`, after: `<p>Section ${i}</p>` }));
+    rows[0] = { kind: 'changed', pageType: 'list', itemCount: 200, pages: [
+      { before: '<p>First page</p>', after: '<p>First page</p>' },
+      { before: '<p>Second page</p>', after: '<p>Second page changed</p>' },
+    ] };
+    window.viewNotifications = [];
+    const display = createComparisonView(container, { scrollTo: target => scrollTo(0, typeof target === 'number' ? target : scrollY + target.getBoundingClientRect().top) }, {
+      onPresented: () => window.viewNotifications.push({ type: 'presented', state: display.getState() }),
+      onViewStateChanged: () => window.viewNotifications.push({ type: 'changed', state: display.getState() }),
+    });
+    display.reset({ rows, source: { rows: [] } }, { before: 'Before', after: 'After' });
+    display.show('rendered');
+  });
+  await expect.poll(() => page.evaluate(() => window.viewNotifications.filter(event => event.type === 'presented').length)).toBe(1);
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.viewNotifications.findLast(event => event.type === 'changed')?.state.rendered.pages)).toEqual([[0, 1]]);
+  const changes = await page.evaluate(() => window.viewNotifications.filter(event => event.type === 'changed').length);
+  await page.setViewportSize({ width: 760, height: 500 });
+  await expect.poll(() => page.evaluate(() => window.viewNotifications.filter(event => event.type === 'changed').length)).toBeGreaterThan(changes);
+  const prefixChanges = await page.evaluate(() => window.viewNotifications.filter(event => event.type === 'changed').length);
+  await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => page.locator('.pair-row').count()).toBeGreaterThan(120);
+  await expect.poll(() => page.evaluate(() => window.viewNotifications.filter(event => event.type === 'changed').length)).toBeGreaterThan(prefixChanges);
+  expect(await page.evaluate(() => window.viewNotifications.filter(event => event.type === 'presented').length)).toBe(1);
+});
+
+test('reset cancels shared-view notifications and presentation can replace its own view', async ({ page }) => {
+  await routeViewModules(page);
+  const events = await page.evaluate(async () => {
+    const { createComparisonView } = await import('./lifecycle-view/view.js');
+    const container = document.createElement('section');
+    document.body.replaceChildren(container);
+    const events = [];
+    const result = text => ({ rows: [{ kind: 'same', before: `<p>${text}</p>`, after: `<p>${text}</p>` }], source: { rows: [] } });
+    const display = createComparisonView(container, { scrollTo() {} }, {
+      onPresented() {
+        events.push(`presented ${container.textContent}`);
+        if (container.textContent === 'FirstFirst') {
+          display.reset(result('Replacement'), { before: 'Before', after: 'After' });
+          display.show('rendered');
+        }
+      },
+      onViewStateChanged() { events.push(`changed ${container.textContent}`); },
+    });
+    display.reset(result('Cancelled'), { before: 'Before', after: 'After' });
+    display.show('rendered');
+    display.reset();
+    for (let i = 0; i < 6; i++) await new Promise(requestAnimationFrame);
+    const cancelledEvents = [...events];
+    display.reset(result('First'), { before: 'Before', after: 'After' });
+    display.show('rendered');
+    for (let i = 0; i < 12; i++) await new Promise(requestAnimationFrame);
+    display.reset();
+    const resetEvents = [...events];
+    for (let i = 0; i < 6; i++) await new Promise(requestAnimationFrame);
+    return { cancelledEvents, resetEvents, events };
+  });
+  expect(events.cancelledEvents).toEqual([]);
+  expect(events.events).toEqual(events.resetEvents);
+  expect(events.events.filter(event => event.startsWith('presented'))).toEqual(['presented FirstFirst', 'presented ReplacementReplacement']);
+  expect(events.events.filter(event => event.startsWith('changed First'))).toEqual([]);
+});
+
 test('file boundaries, status visibility, and actual Source survive success and read errors', async ({ page }) => {
   const status = page.locator('#status');
   await expect(status).toHaveText('Ready when you are');

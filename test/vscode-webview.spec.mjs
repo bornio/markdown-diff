@@ -502,6 +502,106 @@ test('a nonzero rendered page survives a real preview reload', async ({ page }) 
   await expect(page.locator('.document-cell[data-side=after]')).toContainText('Updated 220');
 });
 
+test('one presentation acknowledgment survives page turns, resize, and later scrolling batches', async ({ page }) => {
+  const list = Array.from({ length: 230 }, (_, i) => `- Item ${i + 1}`).join('\n');
+  const text = `${list}\n\n${Array.from({ length: 240 }, (_, i) => `Section ${i}.`).join('\n\n')}`;
+  await openPreview(page, [text, text.replace('Item 220', 'Updated 220')]);
+  const acknowledgments = () => page.evaluate(() => window.messages.filter(message => message.type === 'comparisonRendered').map(message => message.captureId));
+  expect(await acknowledgments()).toEqual([1]);
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.saved.view.rendered.pages)).toEqual([[0, 1]]);
+  await page.setViewportSize({ width: 700, height: 500 });
+  await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => page.locator('.pair-row').count()).toBeGreaterThan(120);
+  await expect.poll(() => page.evaluate(() => window.saved.view.rendered.anchor.row)).toBeGreaterThan(0);
+  expect(await acknowledgments()).toEqual([1]);
+});
+
+test('disposal during the first draw prevents later confirmation and candidate persistence', async ({ page }) => {
+  const { refresh } = await openPreview(page);
+  await page.evaluate(() => {
+    new MutationObserver((_, observer) => {
+      if (!document.querySelector('#comparison').textContent.includes('DISPOSE_CANDIDATE')) return;
+      observer.disconnect();
+      window.dispatchEvent(new Event('pagehide'));
+      window.disposedCandidate = true;
+    }).observe(document.querySelector('#comparison'), { childList: true, subtree: true });
+  });
+  await refresh(['# DISPOSE_CANDIDATE before', '# DISPOSE_CANDIDATE after']);
+  await expect.poll(() => page.evaluate(() => window.disposedCandidate)).toBe(true);
+  await page.evaluate(async () => { for (let i = 0; i < 6; i++) await new Promise(requestAnimationFrame); });
+  await expect(page.locator('#comparison')).toBeEmpty();
+  expect(await page.evaluate(() => window.messages.filter(message => message.type === 'comparisonRendered').map(message => message.captureId))).toEqual([1]);
+  expect(await page.evaluate(() => window.saved.snapshotId)).toBe(1);
+});
+
+for (const leave of ['reload', 'pagehide', 'Source']) test(`an immediate ${leave} saves the final scroll position`, async ({ page }) => {
+  const text = Array.from({ length: 60 }, (_, i) => `Paragraph ${i} has a stable reading position.`).join('\n\n');
+  await openPreview(page, [text, text.replace('Paragraph 55', 'Changed paragraph 55')]);
+  const position = await page.evaluate(leave => {
+    const rows = [...document.querySelectorAll('.pair-row')];
+    const top = document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2;
+    scrollTo(0, scrollY + rows[30].getBoundingClientRect().top - top + 5);
+    const row = document.elementFromPoint(innerWidth / 4, top).closest('.pair-row');
+    const position = { row: rows.indexOf(row), offset: top - row.getBoundingClientRect().top };
+    window.dispatchEvent(new Event('scroll'));
+    if (leave === 'pagehide') window.dispatchEvent(new Event('pagehide'));
+    if (leave === 'Source') document.querySelector('#open-source').click();
+    position.savedRow = window.saved.view.rendered.anchor.row;
+    return position;
+  }, leave);
+  if (leave !== 'reload') expect(position.savedRow).toBe(position.row);
+  await page.reload();
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  const offset = await page.locator('.pair-row').nth(position.row).evaluate(row =>
+    document.querySelector('.extension-toolbar').getBoundingClientRect().bottom + 2 - row.getBoundingClientRect().top);
+  expect(Math.abs(offset - position.offset)).toBeLessThan(3);
+});
+
+test('a failed rollback cancels overlapping new computation and rejects its queued result', async ({ page }) => {
+  const { refresh } = await openPreview(page);
+  await page.exposeFunction('supersedeForRollback', () => refresh(['# Final original', '# Final changed']));
+  await page.evaluate(() => {
+    const NativeWorker = Worker;
+    window.overlapTerminated = false;
+    window.Worker = class extends NativeWorker {
+      postMessage(data) {
+        const handler = this.onmessage;
+        if (data.requestId === 2) {
+          this.onmessage = event => { window.overlapResult = event.data; handler(event); };
+        }
+        if (data.requestId === 3) {
+          window.overlapStarted = true;
+          window.releaseOverlap = () => handler({ data: { ...window.overlapResult, requestId: data.requestId } });
+          return;
+        }
+        return super.postMessage(data);
+      }
+      terminate() { if (window.overlapStarted) window.overlapTerminated = true; super.terminate(); }
+    };
+    const measure = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      if (window.overlapStarted && this.matches('tr[data-pair]')) throw new Error('Overlapping rollback alignment failure');
+      return measure.call(this);
+    };
+    new MutationObserver((_, observer) => {
+      if (!document.querySelector('#comparison').textContent.includes('OVERLAP_CANDIDATE')) return;
+      observer.disconnect();
+      window.supersedeForRollback();
+    }).observe(document.querySelector('#comparison'), { childList: true, subtree: true });
+  });
+  const candidate = Array.from({ length: 200 }, (_, i) => `OVERLAP_CANDIDATE ${i}.`).join('\n\n');
+  await refresh([candidate, candidate.replace('199.', 'updated 199.')]);
+  await expect(page.locator('#notice')).toContainText('The previous preview could not be restored.');
+  await expect.poll(() => page.evaluate(() => typeof window.releaseOverlap)).toBe('function');
+  await page.evaluate(() => window.releaseOverlap());
+  await page.evaluate(async () => { for (let i = 0; i < 6; i++) await new Promise(requestAnimationFrame); });
+  await expect(page.locator('#comparison')).toBeEmpty();
+  await expect(page.locator('#comparison')).toHaveAttribute('aria-busy', 'false');
+  expect(await page.evaluate(() => window.overlapTerminated)).toBe(true);
+  expect(await page.evaluate(() => window.messages.filter(message => message.type === 'comparisonRendered').map(message => message.captureId))).toEqual([1]);
+});
+
 test('legacy Source mode and anchors are ignored and invalid rendered bookmarks do not apply', async ({ page }) => {
   const text = Array.from({ length: 30 }, (_, i) => `Line ${i}`).join('\n');
   await openPreview(page, [text, text.replace('Line 20', 'Changed 20')]);
