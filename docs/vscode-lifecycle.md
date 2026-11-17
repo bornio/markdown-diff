@@ -1,0 +1,21 @@
+# Preview lifecycle
+
+The extension has three owners: the host owns the captured input and its confirmation, the webview owns computation and recovery, and the shared view owns DOM presentation and reading positions.
+
+The webview keeps two concurrent records. `capture` contains the host epoch, the attempted snapshot and input work (`reading`, `computing` or `idle`). A computing record owns its worker and timeout. `screen` is `empty`, `candidate`, `restoring`, `visible` or `stopped`; its `good` value is the only client record of a successfully presented snapshot. Reading new input can overlap restoring an older view, so these concerns remain separate.
+
+A worker result is a candidate. The shared view calls `onPresented` once after mounting, alignment and any bookmark restoration. Only then does the webview promote the candidate, update its provenance and acknowledge the host. Later settled page, prefix and resize changes use `onViewStateChanged` to save position. They cannot confirm another snapshot. Both callbacks may reset the view; view identity is rechecked before remaining bookkeeping.
+
+A presentation failure restores the last good result from a safe starting position. Failed restoration clears the display and cancels work, so an already queued worker reply cannot revive it. Explicit recapture permits another attempt. The attempted-snapshot latch suppresses repeated attempts within a host epoch, including error messages replaying an older confirmed input.
+
+Scroll events schedule one save after 200 ms. Settled view changes, opening Source and page exit flush the current position immediately. Position is associated with the displayed snapshot, never a pending candidate. Disposal releases that displayed state before clearing DOM, preventing a later callback from overwriting the final bookmark.
+
+Hidden previews retain VS Code's default disposal lifecycle. Keeping them alive could avoid ordinary return reconstruction at a memory cost, but it would not remove explicit-reload recovery. That policy and Refresh starting at the top are unchanged. Loaded content is retained for selection and navigation.
+
+## Verification
+
+The refactor preserves the existing host, website and preview behavior checks. Added cases cover one confirmation through page/resize/batch changes, reset and reentrant callbacks, terminal rollback with overlapping computation, and immediate reload, Source navigation and page exit.
+
+The queued-result case failed before the ownership change: a newer worker could repopulate the DOM after failed rollback. It passes when terminal recovery invalidates the computing record. No existing outcome assertion, restore threshold or timeout was relaxed.
+
+A five-pair alternating browser probe compared scroll-frame saving with the 200 ms timer over 600 visited paragraphs. Each trial scrolled for 180 frames and checked the final snapshot, pages and anchor. Saves and hit tests fell from 180 to 14 per trial, with zero final anchor error in all ten runs. This measures removed persistence work in the browser harness, not native IPC or user-visible latency. Input limits, construction budgets and retained-DOM growth remain unchanged.
