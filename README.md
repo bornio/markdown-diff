@@ -5,7 +5,7 @@ Compare Markdown files side by side, with changes inside rendered tables, lists,
 <img width="2048" height="1036" alt="image" src="https://github.com/user-attachments/assets/04d9bfb6-b30e-47d5-bb59-5cffd4c0f370" />
 
 
-[Open the app](https://bornio.github.io/markdown-diff/) · [Try the example](https://bornio.github.io/markdown-diff/example/) · [Download the VS Code extension](https://github.com/bornio/markdown-diff/releases/latest/download/markdown-diff-vscode.vsix)
+[Open the app](https://bornio.github.io/markdown-diff/) · [Try the example](https://bornio.github.io/markdown-diff/example/) · [Install the VS Code extension](https://marketplace.visualstudio.com/items?itemName=bornio.markdown-diff-vscode)
 
 ## Compare files
 
@@ -43,11 +43,13 @@ The page reads history from the GitHub API, which allows 60 requests an hour fro
 
 Requires desktop **Visual Studio Code 1.85 or newer**.
 
-1. [Download the latest extension](https://github.com/bornio/markdown-diff/releases/latest/download/markdown-diff-vscode.vsix).
-2. In VS Code, open the Command Palette (⌘⇧P on macOS, Ctrl+Shift+P on Windows/Linux), run **Extensions: Install from VSIX...**, and select the downloaded file.
+1. Open [Markdown Diff on the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=bornio.markdown-diff-vscode) and choose **Install**, or search for `bornio.markdown-diff-vscode` in VS Code's Extensions view.
+2. Install **Markdown Diff** by **bornio**. Keep **Auto Update** enabled for this extension to receive new versions automatically.
 3. Open a Markdown comparison from Source Control, or use **Select for Compare** and **Compare with Selected** in Explorer. Run **Markdown Diff: Render this comparison**.
 
-No Node.js or local build is needed. To update, install the latest VSIX again and run **Developer: Reload Window** if prompted. GitHub downloads do not provide Marketplace automatic updates. [Release notes and older versions](https://github.com/bornio/markdown-diff/releases) are available for rollback.
+No Node.js or local build is needed. If you previously installed a VSIX, right-click **Markdown Diff** in the Extensions view and enable **Auto Update**; VSIX installation disables it by default. The extension keeps the same ID, `bornio.markdown-diff-vscode`.
+
+For manual installation, [download the VSIX](https://github.com/bornio/markdown-diff/releases/latest/download/markdown-diff-vscode.vsix) and run **Extensions: Install from VSIX...** from the Command Palette. [Release notes and older versions](https://github.com/bornio/markdown-diff/releases) remain available for rollback.
 
 The extension displays the pair as a rendered snapshot. **Open live Source diff** returns to the original native comparison for editing. Source can change while the preview keeps its captured text. Return to the preview to check for changes, then choose **Refresh** to capture them. Running **Render this comparison** again also captures the current text.
 
@@ -74,7 +76,7 @@ npm run check
 
 GitHub Actions runs `npm run check` for pull requests and `main`. After that check, a push or manual run on `main` deploys to GitHub Pages. Pull requests do not deploy. The build produces static HTML, CSS, JavaScript, and SVG files in `dist/`. The example has its own `example/index.html`, so direct links work on a static host.
 
-CI also runs the extension checks, builds its VSIX and keeps it as a workflow artifact on every pull request and `main` build. After successful checks on `main`, a new version in `vscode/package.json` is automatically published as a GitHub Release tagged `vscode-v<version>`, with the tested VSIX and `SHA256SUMS`. Existing releases are never overwritten. To release an update, bump that version in a PR and merge after CI passes. A manual workflow run on `main` can retry a failed publication.
+CI also runs the extension checks, builds its VSIX and keeps it as a workflow artifact on every pull request and `main` build. After successful checks on `main`, the tested package is published to the Visual Studio Marketplace and a GitHub Release tagged `vscode-v<version>`, with `SHA256SUMS`. Existing versions are skipped. To release an update, bump `vscode/package.json` in a PR and merge after CI passes. A manual workflow run on `main` can retry a failed publication. Marketplace publishing uses a [one-time trusted publishing policy](vscode/README.md#release-maintenance) rather than a stored token.
 
 To use another host, deploy `dist/`. For a subdirectory, set the same base path when building and previewing. The default is `/`.
 

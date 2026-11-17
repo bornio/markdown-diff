@@ -2,7 +2,7 @@
   "name": "markdown-diff-vscode",
   "displayName": "Markdown Diff",
   "description": "Read rendered Markdown differences from the comparison already open in VS Code.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "bornio",
   "license": "UNLICENSED",
   "repository": { "type": "git", "url": "https://github.com/bornio/markdown-diff" },
