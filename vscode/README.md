@@ -6,17 +6,17 @@ Read Markdown changes as rendered tables, lists, headings, and text. The extensi
 
 Requires desktop **Visual Studio Code 1.85 or newer**.
 
-1. [Download the latest VSIX](https://github.com/bornio/markdown-diff/releases/latest/download/markdown-diff-vscode.vsix).
-2. Open the Command Palette (⌘⇧P on macOS, Ctrl+Shift+P on Windows/Linux), run **Extensions: Install from VSIX...**, and choose the downloaded file.
-3. Reload the window if VS Code requests it.
+Open [Markdown Diff on the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=bornio.markdown-diff-vscode) and choose **Install**, or search for `bornio.markdown-diff-vscode` in VS Code's Extensions view. Install **Markdown Diff** by **bornio**.
 
-Or install the downloaded file from a terminal:
+Or install from a terminal:
 
 ```sh
-code --install-extension ./markdown-diff-vscode.vsix
+code --install-extension bornio.markdown-diff-vscode
 ```
 
-To update, download and install the latest VSIX again. These GitHub releases do not update automatically through the Marketplace. [Release notes, checksums and older versions](https://github.com/bornio/markdown-diff/releases) remain available; install an older VSIX to roll back.
+With **Auto Update** enabled for Markdown Diff, VS Code obtains new releases from Marketplace. If you previously installed a VSIX, right-click the extension in the Extensions view and enable **Auto Update**; VSIX installation disables it by default. The extension ID is unchanged, so it remains the same extension. Reload the window if VS Code requests it.
+
+For manual/offline installation, [download the VSIX](https://github.com/bornio/markdown-diff/releases/latest/download/markdown-diff-vscode.vsix), then run **Extensions: Install from VSIX...** from the Command Palette. [Release notes, checksums and older versions](https://github.com/bornio/markdown-diff/releases) remain available; install an older VSIX to roll back.
 
 ## Use
 
@@ -70,3 +70,9 @@ npm run test:vscode:ide -- "artifacts/markdown-diff-vscode-$(node -p 'require(".
 ```
 
 The IDE runner uses the installed macOS VS Code by default. Set `VSCODE_EXECUTABLE_PATH` for another executable. Set `MARKDOWN_DIFF_IDE_SCENARIO=restricted` or `virtual` for the additional capability checks. Reports, runtime hashes, accessibility audits, screenshots, and responsiveness observations are written to `artifacts/`. Each installed run asserts that its loaded runtime matches the requested VSIX. The repository verification summary records one dated candidate; new candidates keep their own results.
+
+## Release maintenance
+
+The `bornio` Marketplace publisher needs one Trusted Publishing policy for GitHub Actions: repository owner `bornio`, repository `markdown-diff`, workflow `pages.yml`, and no environment. Create it in the [publisher management portal](https://marketplace.visualstudio.com/manage/publishers/) under **Trusted Publishing**. CI uses `vsce publish --oidc` and requests only a short-lived publishing credential; no PAT repository secret is needed.
+
+Bump this extension's version in `vscode/package.json` and merge after CI passes. The successful build's VSIX is published to Marketplace and GitHub Releases. Both destinations skip existing versions, so a failed job can be rerun without replacing an already published release. Users receive updates according to their VS Code settings; the extension does not change those settings.
