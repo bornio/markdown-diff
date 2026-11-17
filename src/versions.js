@@ -145,6 +145,7 @@ export function createVersions(host) {
     get state() { return state; },
     entry,
     open,
+    cancelPending() { run++; },
     /** Put one version on one side; the other side stays. */
     pick(side, sha) {
       if (!host.keepEdits()) return;
@@ -173,6 +174,7 @@ export function createVersions(host) {
     },
     swap() {
       if (!state) return;
+      run++;
       [state.a, state.b] = [state.b, state.a];
       writeUrl({ a: state.a, b: state.b }, false);
     },

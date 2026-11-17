@@ -476,6 +476,51 @@ test('a GitHub link compares the latest two versions, and each filename picks an
   await expect(page.locator('#status')).toHaveText('Same version on both sides');
 });
 
+for (const action of ['replace', 'edit', 'swap']) test(`a late GitHub version cannot overwrite a newer local ${action}`, async ({ page }) => {
+  await mockGitHub(page);
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  let requested = false;
+  await page.route(`https://raw.githubusercontent.com/o/r/${sha(1)}/**`, async route => {
+    requested = true;
+    await held;
+    await route.fallback();
+  });
+  await page.goto(linkTo(REPO_LINK));
+  await expect(page.locator('#status')).toHaveText('Comparison ready');
+  if (action === 'edit') await page.locator('#source-view').click();
+  await page.locator('#before-name summary').click();
+  await page.getByRole('option', { name: /Plan, take 1/ }).click();
+  await expect.poll(() => requested).toBe(true);
+  if (action === 'replace') {
+    await drop(page, 'before', file('Local.md', '# Local replacement'));
+    await expect(page.locator('#before-name')).toHaveText('Local.md');
+  } else if (action === 'edit') {
+    await page.locator('.source-cell[data-side=before]').first().click();
+    await page.locator('#editor [data-side=before]').fill('# Local draft');
+  } else {
+    await page.locator('#swap').click();
+    await expect(page.locator('#before-name')).toHaveText(/Mar 1/);
+  }
+  const response = page.waitForResponse(url => url.url().includes(`/o/r/${sha(1)}/`));
+  release();
+  await (await response).finished();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  if (action === 'replace') {
+    await expect(page.locator('#before-name')).toHaveText('Local.md');
+    await expect(page.locator('.document-cell[data-side=before]').getByRole('heading', { name: 'Local replacement', exact: true })).toBeVisible();
+    await page.locator('#after-name summary').click();
+    await expect(page.getByRole('dialog', { name: 'Changed version' }).getByRole('option')).toHaveCount(3);
+  } else if (action === 'edit') {
+    await expect(page.locator('#editor')).toBeVisible();
+    await expect(page.locator('#editor [data-side=before]')).toHaveValue('# Local draft');
+  } else {
+    await expect(page.locator('#before-name')).toHaveText(/Mar 1/);
+    await expect(page.locator('#after-name')).toHaveText(/Feb 1/);
+    expect(query(page)).toMatchObject({ a: sha(3), b: sha(2) });
+  }
+});
+
 test('a long history loads older versions into the open menu', async ({ page }) => {
   await mockGitHub(page, { paged: true });
   await page.goto(linkTo(REPO_LINK));

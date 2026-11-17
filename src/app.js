@@ -166,6 +166,7 @@ function startComparison() {
 async function readFiles(files, side) {
   const chosen = [...files].slice(0, 2);
   if (!chosen.length) return;
+  versions.cancelPending();
   const selectionId = ++state.selectionId;
   const targets = chosen.length === 2 ? ['before', 'after'] : [side || 'after'];
   for (const target of targets) state.readIds[target] = selectionId;
@@ -217,6 +218,7 @@ function openEditor(side, line = 1) {
   textarea.scrollTop = (line - 1) * parseFloat(getComputedStyle(textarea).lineHeight) - textarea.clientHeight / 3;
 }
 function startEditing(side, line) {
+  versions.cancelPending();
   dropPendingReads();
   state.status = 'editing';
   openEditor(side, line);
