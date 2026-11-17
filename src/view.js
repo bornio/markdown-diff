@@ -1,13 +1,12 @@
 import { partners } from './partners.js';
 import { presentTables } from './tables.js';
 
-export function createComparisonView(container, chrome, { renderDocument, onRendered, onError, batchLimits, chunkRows = 0 } = {}) {
+export function createComparisonView(container, chrome, { renderDocument, onPresented, onViewStateChanged, onError, batchLimits, chunkRows = 0 } = {}) {
   let comparison = null;
   let names = null;
   let current = null;
   let alignmentFrame = 0;
   let resetSizes = false;
-  let bookmarks = {};
   const views = new Map();
   const nearTargets = new Set();
   const activeTargets = new Set();
@@ -17,16 +16,7 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
     if (!onError) return action();
     try { return action(); }
     catch (error) {
-      if (current) {
-        cancelAnimationFrame(current.frame);
-        cancelAnimationFrame(current.readyFrame);
-        current.frame = current.readyFrame = 0;
-      }
-      cancelAnimationFrame(alignmentFrame);
-      alignmentFrame = 0;
-      incremental.disconnect();
-      activeTargets.clear();
-      current = null;
+      halt();
       onError(error);
     }
   }
@@ -50,7 +40,10 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       recordHeight(node, entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height);
     }
     scheduleAlignment();
-    if (current?.mounted) onRendered?.();
+    if (current?.reported) {
+      current.reported = false;
+      scheduleSettlement(current);
+    }
   }));
   const visible = new IntersectionObserver((entries) => {
     let entering = false;
@@ -197,10 +190,10 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
         fill();
         if (page) view.pages.set(index, page);
         else view.pages.delete(index);
-        view.mounted = false;
+        view.reported = false;
         scheduleAlignment(true);
         chrome.scrollTo(pager);
-        notifyMounted(view);
+        scheduleSettlement(view);
       });
       back.onclick = () => turn(-1);
       next.onclick = () => turn(1);
@@ -212,22 +205,23 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
     return node;
   }
 
-  function createView(mode) {
+  function createView(mode, saved) {
     const root = document.createElement('div');
     root.className = `${mode}-view`;
     const more = document.createElement('div');
     more.className = 'mount-progress';
     const rows = mode === 'source' ? comparison.source.rows : comparison.rows;
     if (mode === 'source') root.style.setProperty('--source-digits', String(String(rows.length || 1).length));
-    const bookmark = bookmarks[mode];
+    const bookmark = readBookmark(saved, rows);
     const view = {
       mode, root, more, rows,
       chunkSize: mode === 'rendered' ? chunkRows : 0,
       tail: null,
-      pages: new Map(bookmark?.pages),
-      restore: bookmark?.anchor ? { ...bookmark.anchor, passes: 0 } : null,
+      pages: new Map(bookmark.pages),
+      restore: bookmark.anchor ? { ...bookmark.anchor, passes: 0 } : null,
+      settled: { anchor: bookmark.anchor || { row: 0, offset: 0 }, pages: bookmark.pages },
       position: 0, end: 0, scroll: 0,
-      frame: 0, readyFrame: 0, mounted: false,
+      frame: 0, readyFrame: 0, reported: false, presented: false,
     };
     views.set(mode, view);
     return view;
@@ -238,14 +232,19 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       view.frame = 0;
       if (view !== current) return;
       const source = view.mode === 'source';
-      const stop = Math.min(view.restore && batchLimits && !source ? Math.max(view.position + 12, view.restore.row) : view.position + (source ? 80 : 12), view.end);
+      const nextRows = view.position + (source ? 80 : 12);
+      const restoreRows = view.restore && batchLimits && !source ? Math.max(nextRows, view.restore.row) : nextRows;
+      const stop = Math.min(restoreRows, view.end);
       const fragment = document.createDocumentFragment();
       const started = batchLimits ? performance.now() : 0;
       let characters = 0;
       while (view.position < stop) {
         const row = view.rows[view.position];
         const content = row.pages ? row.pages[view.pages.get(view.position) || 0] : row;
-        const cost = !batchLimits ? 0 : source ? (content.before?.html.length || 0) + (content.after?.html.length || 0) : content.before.length + content.after.length;
+        let cost = 0;
+        if (batchLimits) cost = source
+          ? (content.before?.html.length || 0) + (content.after?.html.length || 0)
+          : content.before.length + content.after.length;
         if (batchLimits && fragment.childNodes.length && (characters + cost > batchLimits.characters || performance.now() - started >= batchLimits.milliseconds)) break;
         fragment.append(buildRow(row, source, view.position++, view));
         characters += cost;
@@ -269,17 +268,18 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
         incremental.observe(view.more);
       }
       scheduleAlignment();
-      notifyMounted(view);
+      scheduleSettlement(view);
     });
   }
 
-  function notifyMounted(view) {
-    if ((!onRendered && !view.restore) || view !== current || view.mounted || view.readyFrame || view.position < view.end) return;
+  function scheduleSettlement(view) {
+    if ((!onPresented && !onViewStateChanged && !view.restore) ||
+        view !== current || view.reported || view.readyFrame || view.position < view.end) return;
     view.readyFrame = requestAnimationFrame(() => attempt(() => {
       view.readyFrame = requestAnimationFrame(() => attempt(() => {
         view.readyFrame = 0;
-        if (view !== current || view.mounted || view.position < view.end) return;
-        if (alignmentFrame) { notifyMounted(view); return; }
+        if (view !== current || view.reported || view.position < view.end) return;
+        if (alignmentFrame) { scheduleSettlement(view); return; }
         if (view.restore) {
           const anchor = view.restore;
           const row = view.chunkSize ? view.root.children[Math.floor(anchor.row / view.chunkSize)]?.children[anchor.row % view.chunkSize] : view.root.children[anchor.row];
@@ -289,12 +289,15 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
             chrome.scrollTo(window.scrollY + delta);
             scheduleAlignment(true);
           } else view.restore = null;
-          notifyMounted(view);
+          scheduleSettlement(view);
           return;
         }
-        view.mounted = true;
-        bookmarks = getState();
-        onRendered?.();
+        view.reported = true;
+        const firstPresentation = !view.presented;
+        view.presented = true;
+        view.settled = { anchor: readAnchor(view), pages: [...view.pages] };
+        if (firstPresentation) onPresented?.(view.settled);
+        else onViewStateChanged?.(view.settled);
       }));
     }));
   }
@@ -304,17 +307,17 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       if (!view || view !== current || view.frame || view.position >= view.rows.length) return;
       incremental.disconnect();
       view.more.remove();
-      view.mounted = false;
-      view.end = Math.min(Math.max(view.position + (view.mode === 'source' ? 400 : 120), view.restore ? view.restore.row + (view.mode === 'source' ? 400 : 120) : 0), view.rows.length);
+      view.reported = false;
+      const windowSize = view.mode === 'source' ? 400 : 120;
+      const nextEnd = view.position + windowSize;
+      const restoreEnd = view.restore ? view.restore.row + windowSize : 0;
+      view.end = Math.min(Math.max(nextEnd, restoreEnd), view.rows.length);
       step(view);
     });
   }
 
-  function pause() {
-    if (current) bookmarks = getState();
-    snapshotHeights(activeTargets);
+  function halt() {
     if (current) {
-      current.scroll = window.scrollY;
       cancelAnimationFrame(current.frame);
       cancelAnimationFrame(current.readyFrame);
       current.frame = 0;
@@ -327,11 +330,17 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
     current = null;
   }
 
-  function show(mode) {
+  function pause() {
+    snapshotHeights(activeTargets);
+    if (current) current.scroll = window.scrollY;
+    halt();
+  }
+
+  function show(mode, bookmark = null) {
     return attempt(() => {
       if (!comparison) return;
       pause();
-      const view = views.get(mode) || createView(mode);
+      const view = views.get(mode) || createView(mode, bookmark);
       current = view;
       container.replaceChildren(view.root);
       if (!view.restore) chrome.scrollTo(view.scroll);
@@ -343,7 +352,7 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       else if (!view.position) mountNext(view);
       else if (view.position < view.rows.length) incremental.observe(view.more);
       scheduleAlignment(true);
-      notifyMounted(view);
+      scheduleSettlement(view);
     });
   }
 
@@ -386,55 +395,44 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
     }));
   }
 
+  function readAnchor(view) {
+    const bounds = view.root.getBoundingClientRect();
+    const obscured = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--chrome-obscured')) || 0;
+    const y = Math.min(innerHeight - 1, Math.max(obscured, bounds.top) + 1);
+    const hit = document.elementFromPoint(bounds.left + bounds.width / 4, y)?.closest('.pair-row');
+    const row = hit && view.root.contains(hit) ? hit : [...activeTargets].flatMap(rowsIn)
+      .filter(row => row.isConnected && row.getBoundingClientRect().bottom > 0)
+      .sort((a, b) => a.comparisonRow - b.comparisonRow)[0];
+    return row ? { row: row.comparisonRow, offset: -row.getBoundingClientRect().top } : view.settled.anchor;
+  }
+
   function getState() {
-    const result = { ...bookmarks };
-    for (const [mode, view] of views) {
-      let anchor = view.restore || result[mode]?.anchor || { row: 0, offset: 0 };
-      if (view === current && !view.restore) {
-        const bounds = view.root.getBoundingClientRect();
-        const obscured = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--chrome-obscured')) || 0;
-        const y = Math.min(innerHeight - 1, Math.max(obscured, bounds.top) + 1);
-        const hit = document.elementFromPoint(bounds.left + bounds.width / 4, y)?.closest('.pair-row');
-        const row = hit && view.root.contains(hit) ? hit : [...activeTargets].flatMap(rowsIn).filter(row => row.isConnected && row.getBoundingClientRect().bottom > 0)
-          .sort((a, b) => a.comparisonRow - b.comparisonRow)[0];
-        if (row) anchor = { row: row.comparisonRow, offset: -row.getBoundingClientRect().top };
-      }
-      result[mode] = { anchor: { row: anchor.row, offset: anchor.offset }, pages: view.mounted || view.restore ? [...view.pages] : result[mode]?.pages || [] };
-    }
-    return result;
+    return { anchor: readAnchor(current), pages: current.settled.pages };
   }
 
-  function readBookmarks(value) {
-    const result = {};
-    for (const mode of ['rendered', 'source']) {
-      const saved = value?.[mode];
-      if (!saved || typeof saved !== 'object') continue;
-      const rows = mode === 'source' ? comparison.source.rows : comparison.rows;
-      const pages = new Map();
-      if (Array.isArray(saved.pages)) for (const entry of saved.pages.slice(0, rows.length)) {
-        if (!Array.isArray(entry) || entry.length !== 2) continue;
-        const [row, page] = entry;
-        if (!Number.isInteger(row) || !Number.isInteger(page) || !rows[row]?.pages) continue;
-        const clamped = Math.max(0, Math.min(page, rows[row].pages.length - 1));
-        if (clamped) pages.set(row, clamped);
-      }
-      const anchor = saved.anchor;
-      result[mode] = { pages: [...pages], anchor: Number.isInteger(anchor?.row) && Number.isFinite(anchor?.offset) && rows.length ? {
-        row: Math.max(0, Math.min(anchor.row, rows.length - 1)), offset: Math.max(-1000000, Math.min(anchor.offset, 1000000)),
-      } : null };
+  function readBookmark(saved, rows) {
+    const pages = new Map();
+    if (Array.isArray(saved?.pages)) for (const entry of saved.pages.slice(0, rows.length)) {
+      if (!Array.isArray(entry) || entry.length !== 2) continue;
+      const [row, page] = entry;
+      if (!Number.isInteger(row) || !Number.isInteger(page) || !rows[row]?.pages) continue;
+      const clamped = Math.max(0, Math.min(page, rows[row].pages.length - 1));
+      if (clamped) pages.set(row, clamped);
     }
-    return result;
+    const anchor = saved?.anchor;
+    return { pages: [...pages], anchor: Number.isInteger(anchor?.row) && Number.isFinite(anchor?.offset) && rows.length ? {
+      row: Math.max(0, Math.min(anchor.row, rows.length - 1)), offset: Math.max(-1000000, Math.min(anchor.offset, 1000000)),
+    } : null };
   }
 
-  function reset(result = null, filenames = null, viewState = null) {
-    pause();
+  function reset(result = null, filenames = null) {
+    halt();
     resized.disconnect();
     visible.disconnect();
     nearTargets.clear();
     views.clear();
     comparison = result;
     names = filenames;
-    bookmarks = result ? readBookmarks(viewState) : {};
     container.replaceChildren();
   }
 
