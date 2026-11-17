@@ -10,6 +10,8 @@ A presentation failure restores the last good result from a safe starting positi
 
 Scroll events schedule one save after 200 ms. Settled view changes, opening Source and page exit flush the current position immediately. Position is associated with the displayed snapshot, never a pending candidate. Disposal releases that displayed state before clearing DOM, preventing a later callback from overwriting the final bookmark.
 
+Each view owns its settled bookmark. `show(mode, bookmark)` validates a saved bookmark when creating that view; `getState()` reads the current view's position with its last settled pages. The webview alone wraps this in the existing saved-state format. The website retains its per-mode DOM and pixel scroll positions without reading or maintaining a separate bookmark map. Error handling and normal pause share one cancellation routine; pause alone records heights and pixel position before stopping work.
+
 Hidden previews retain VS Code's default disposal lifecycle. Keeping them alive could avoid ordinary return reconstruction at a memory cost, but it would not remove explicit-reload recovery. That policy and Refresh starting at the top are unchanged. Loaded content is retained for selection and navigation.
 
 ## Verification

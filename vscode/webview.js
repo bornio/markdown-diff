@@ -21,12 +21,11 @@ const display = createComparisonView(comparison, { scrollTo(target) {
   window.scrollTo({ top, behavior: 'instant' });
 } }, { renderDocument, onPresented: commitDraw, onViewStateChanged: persist, onError: failDraw, batchLimits: previewLimits.batch, chunkRows: 64 });
 
-function persist(viewState) {
+function persist(bookmark) {
   clearTimeout(scrollSave);
   scrollSave = 0;
   if (screen.kind === 'visible') {
-    const view = viewState || display.getState();
-    vscode.setState({ snapshotId: screen.good.snapshot.captureId, view: { rendered: view.rendered } });
+    vscode.setState({ snapshotId: screen.good.snapshot.captureId, view: { rendered: bookmark || display.getState() } });
   }
 }
 
@@ -134,8 +133,8 @@ function sentence(message) {
 function draw(value, kind, bookmark = null) {
   screen = { kind, value, good: screen.good || null };
   try {
-    display.reset(value.result, { before: value.snapshot.before.label, after: value.snapshot.after.label }, bookmark);
-    display.show('rendered');
+    display.reset(value.result, { before: value.snapshot.before.label, after: value.snapshot.after.label });
+    display.show('rendered', bookmark);
   } catch (cause) { failDraw(cause); }
   update();
 }
@@ -202,7 +201,7 @@ function compare(snapshot, purpose) {
     if (data.status === 'error' && typeof data.message === 'string') { fail(data.message); return; }
     if (data.status !== 'ready' || !data.comparison) { fail('The comparison worker returned an invalid result. Refresh to try again.'); return; }
     stopWork();
-    draw({ snapshot, result: data.comparison }, work.purpose, saved?.snapshotId === snapshot.captureId ? { rendered: saved.view?.rendered } : null);
+    draw({ snapshot, result: data.comparison }, work.purpose, saved?.snapshotId === snapshot.captureId ? saved.view?.rendered : null);
   };
   work.worker.onerror = () => fail('The comparison worker stopped unexpectedly. Refresh to try again.');
   work.timeout = setTimeout(() => fail('This comparison exceeded 12 seconds. Split very large or deeply nested documents into smaller files.'), 12000);

@@ -104,9 +104,9 @@ test('the shared view presents once and reports subsequent settled pages, prefix
     display.show('rendered');
   });
   await expect.poll(() => page.evaluate(() => window.viewNotifications.filter(event => event.type === 'presented').length)).toBe(1);
-  expect(await page.evaluate(() => window.viewNotifications[0].state.rendered.pages)).toEqual([]);
+  expect(await page.evaluate(() => window.viewNotifications[0].state.pages)).toEqual([]);
   await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => window.viewNotifications.findLast(event => event.type === 'changed')?.state.rendered.pages)).toEqual([[0, 1]]);
+  await expect.poll(() => page.evaluate(() => window.viewNotifications.findLast(event => event.type === 'changed')?.state.pages)).toEqual([[0, 1]]);
   const changes = await page.evaluate(() => window.viewNotifications.filter(event => event.type === 'changed').length);
   await page.setViewportSize({ width: 760, height: 500 });
   await expect.poll(() => page.evaluate(() => window.viewNotifications.filter(event => event.type === 'changed').length)).toBeGreaterThan(changes);
