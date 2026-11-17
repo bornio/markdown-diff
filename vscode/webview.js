@@ -11,55 +11,62 @@ const toolbar = $('.extension-toolbar');
 const notice = $('#notice');
 const refresh = $('#refresh');
 const saved = vscode.getState();
-const state = {
-  shown: null, presentation: null, attemptKey: '', sourceStatus: null,
-  captureId: 0, reading: true, error: '', worker: null, timeout: null,
-};
+let capture = { id: 0, attemptedSnapshotId: null, work: { kind: 'reading' } };
+let screen = { kind: 'empty' };
+let sourceStatus = null;
+let error = '';
+let scrollSave = 0;
 const display = createComparisonView(comparison, { scrollTo(target) {
   const top = typeof target === 'number' ? target : window.scrollY + target.getBoundingClientRect().top - toolbar.getBoundingClientRect().height - 12;
   window.scrollTo({ top, behavior: 'instant' });
-} }, { renderDocument, onRendered: mounted, onError: presentationFailed, batchLimits: previewLimits.batch, chunkRows: 64 });
+} }, { renderDocument, onPresented: commitDraw, onViewStateChanged: persist, onError: failDraw, batchLimits: previewLimits.batch, chunkRows: 64 });
 
 function persist() {
-  if (state.shown && !state.presentation) vscode.setState({ snapshotId: state.shown.snapshot.captureId, view: { rendered: display.getState().rendered } });
+  clearTimeout(scrollSave);
+  scrollSave = 0;
+  if (screen.kind === 'visible') vscode.setState({ snapshotId: screen.good.snapshot.captureId, view: { rendered: display.getState().rendered } });
 }
 
 function update() {
-  const result = state.presentation?.kind === 'failed' ? null : state.shown?.result;
-  const busy = state.reading || !!state.worker || (!!state.presentation && state.presentation.kind !== 'failed');
+  const result = screen.good?.result;
+  const reading = capture.work.kind === 'reading';
+  const drawing = screen.kind === 'candidate' || screen.kind === 'restoring';
+  const busy = capture.work.kind !== 'idle' || drawing;
   comparison.setAttribute('aria-busy', String(busy));
-  const sourceStatus = state.sourceStatus && state.sourceStatus.captureId === state.shown?.snapshot.captureId ? state.sourceStatus.status : null;
-  const sourceMessage = sourceStatus === 'changed' ? 'Source changed since capture. Refresh to update the preview.'
-    : sourceStatus === 'unknown' ? 'Could not check live Source. The captured preview is unchanged. Refresh to try again.' : '';
+  const freshness = sourceStatus?.captureId === screen.good?.snapshot.captureId ? sourceStatus?.status : null;
+  const sourceMessage = freshness === 'changed' ? 'Source changed since capture. Refresh to update the preview.'
+    : freshness === 'unknown' ? 'Could not check live Source. The captured preview is unchanged. Refresh to try again.' : '';
   if ($('#source-status').textContent !== sourceMessage) $('#source-status').textContent = sourceMessage;
   $('#source-status').hidden = !sourceMessage;
   let status = 'Comparison ready';
-  if (state.reading) status = 'Reading documents…';
-  else if (state.presentation?.kind === 'restore') status = 'Restoring previous snapshot…';
+  if (reading) status = 'Reading documents…';
+  else if (screen.kind === 'restoring') status = 'Restoring previous snapshot…';
   else if (busy) status = 'Comparing…';
-  else if (state.error) status = 'Comparison needs attention';
+  else if (error) status = 'Comparison needs attention';
   else if (!result) status = 'No comparison available';
   else if (!result.stats.added && !result.stats.removed && !result.stats.changed) status = 'Files are identical';
   else if (result.rows.every((row) => row.kind === 'same')) status = 'Same rendered content';
   if ($('#status').textContent !== status) $('#status').textContent = status;
   const warnings = result?.precision.warnings || [];
-  const error = state.error && state.shown && !state.presentation ? `${sentence(state.error)} The previous snapshot is still shown.` : state.error;
-  const announcement = [error, ...warnings].filter(Boolean).join(' ');
-  const role = state.error ? 'alert' : 'status';
+  const errorMessage = error && screen.kind === 'visible' ? `${sentence(error)} The previous snapshot is still shown.` : error;
+  const announcement = [errorMessage, ...warnings].filter(Boolean).join(' ');
+  const role = error ? 'alert' : 'status';
   if (notice.getAttribute('role') !== role) notice.setAttribute('role', role);
   if (notice.textContent !== announcement) notice.textContent = announcement;
   notice.hidden = !notice.textContent;
-  notice.classList.toggle('error', !!state.error);
+  notice.classList.toggle('error', !!error);
   $('#stats').textContent = result ? `Lines · ${result.stats.added} added · ${result.stats.removed} removed · ${result.stats.changed} changed` : '';
-  if (state.presentation && state.presentation.kind !== 'failed') $('#snapshot-label').textContent = 'Preparing the snapshot…';
-  else if (!state.shown) $('#snapshot-label').textContent = state.reading ? 'Reading the comparison…' : 'No snapshot displayed.';
+  if (drawing) $('#snapshot-label').textContent = 'Preparing the snapshot…';
+  else if (!screen.good) $('#snapshot-label').textContent = reading ? 'Reading the comparison…' : 'No snapshot displayed.';
 }
 
-function stopWorker() {
-  state.worker?.terminate();
-  state.worker = null;
-  clearTimeout(state.timeout);
-  state.timeout = null;
+function stopWork() {
+  const work = capture.work;
+  capture.work = { kind: 'idle' };
+  if (work.kind === 'computing') {
+    clearTimeout(work.timeout);
+    work.worker?.terminate();
+  }
 }
 
 function taskLabel(checkbox) {
@@ -121,117 +128,116 @@ function sentence(message) {
   return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
-function mount(value, kind = 'candidate', bookmark = null) {
-  state.presentation = { ...value, kind };
+function draw(value, kind, bookmark = null) {
+  screen = kind === 'candidate' ? { kind, value, good: screen.good || null } : { kind: 'restoring', good: value };
   try {
     display.reset(value.result, { before: value.snapshot.before.label, after: value.snapshot.after.label }, bookmark);
     display.show('rendered');
-  } catch (error) { presentationFailed(error); }
+  } catch (error) { failDraw(error); }
   update();
 }
 
-function mounted() {
-  const value = state.presentation;
-  if (value?.kind === 'failed') return;
-  if (value) {
-    describe(value.snapshot);
-    state.shown = { snapshot: value.snapshot, result: value.result };
-    state.presentation = null;
-    if (value.kind === 'candidate') vscode.postMessage({ type: 'comparisonRendered', captureId: value.snapshot.captureId });
-  }
+function commitDraw() {
+  if (screen.kind !== 'candidate' && screen.kind !== 'restoring') return;
+  const completed = screen;
+  const good = completed.kind === 'candidate' ? completed.value : completed.good;
+  screen = { kind: 'visible', good };
+  describe(good.snapshot);
+  if (completed.kind === 'candidate') vscode.postMessage({ type: 'comparisonRendered', captureId: good.snapshot.captureId });
   persist();
   update();
 }
 
 function terminal(message) {
-  state.error = message;
-  state.presentation = { kind: 'failed', message };
-  state.shown = null;
+  stopWork();
+  error = message;
+  screen = { kind: 'stopped' };
   try { display.reset(); } catch {}
   $('#before-label').textContent = $('#after-label').textContent = '';
 }
 
-function presentationFailed(error) {
-  const value = state.presentation;
-  const snapshot = value?.snapshot || state.shown?.snapshot;
-  state.presentation = null;
-  state.error = `The comparison could not be displayed. ${sentence(error instanceof Error ? error.message : 'Refresh to try again')}`;
-  if (value?.kind === 'restore') {
+function failDraw(cause) {
+  const failed = screen;
+  error = `The comparison could not be displayed. ${sentence(cause instanceof Error ? cause.message : 'Refresh to try again')}`;
+  if (failed.kind === 'restoring') {
     terminal('The previous preview could not be restored. Open the source comparison or Refresh to try again.');
   } else {
-    if (snapshot) vscode.postMessage({ type: 'comparisonFailed', captureId: snapshot.captureId, message: state.error });
-    if (state.shown) mount(state.shown, 'restore');
-    else display.reset();
+    const snapshot = failed.kind === 'candidate' ? failed.value.snapshot : failed.good?.snapshot;
+    if (snapshot) vscode.postMessage({ type: 'comparisonFailed', captureId: snapshot.captureId, message: error });
+    if (failed.good) draw(failed.good, 'restoring');
+    else { screen = { kind: 'empty' }; display.reset(); }
   }
   update();
 }
 
-function cancelComparison() {
-  stopWorker();
-  const displaced = state.presentation && state.presentation.kind !== 'failed';
-  state.presentation = null;
-  if (displaced) {
-    if (state.shown) mount(state.shown, 'restore');
-    else display.reset();
+function beginRead() {
+  stopWork();
+  capture.work = { kind: 'reading' };
+  if (screen.kind === 'stopped') screen = { kind: 'empty' };
+  else if (screen.kind === 'candidate' || screen.kind === 'restoring') {
+    if (screen.good) draw(screen.good, 'restoring');
+    else { screen = { kind: 'empty' }; display.reset(); }
   }
 }
 
-function compare(snapshot, kind) {
-  cancelComparison();
+function compare(snapshot, purpose) {
+  stopWork();
+  const work = { kind: 'computing', snapshot, purpose, captureId: capture.id, worker: null, timeout: null };
+  capture.work = work;
   const fail = (message) => {
-    stopWorker();
-    state.error = sentence(message);
-    if (kind === 'candidate') vscode.postMessage({ type: 'comparisonFailed', captureId: snapshot.captureId, message: state.error });
-    if (!state.shown && kind === 'restore') terminal(`The previous preview could not be restored. ${state.error} Open the source comparison or Refresh to try again.`);
+    if (capture.work !== work) return;
+    stopWork();
+    error = sentence(message);
+    if (work.purpose === 'candidate') vscode.postMessage({ type: 'comparisonFailed', captureId: work.snapshot.captureId, message: error });
+    if (!screen.good && work.purpose === 'restoring') terminal(`The previous preview could not be restored. ${error} Open the source comparison or Refresh to try again.`);
     update();
   };
-  let worker;
-  try { worker = new ComparisonWorker(); }
+  try { work.worker = new ComparisonWorker(); }
   catch { fail('The comparison worker could not start. Reload the preview or reinstall the extension.'); return; }
-  state.worker = worker;
-  worker.onmessage = ({ data }) => {
-    if (state.worker !== worker || data?.requestId !== snapshot.captureId) return;
+  work.worker.onmessage = ({ data }) => {
+    const snapshot = work.snapshot;
+    if (capture.work !== work || capture.id !== work.captureId || data?.requestId !== snapshot.captureId) return;
     if (data.status === 'error' && typeof data.message === 'string') { fail(data.message); return; }
     if (data.status !== 'ready' || !data.comparison) { fail('The comparison worker returned an invalid result. Refresh to try again.'); return; }
-    stopWorker();
-    mount({ snapshot, result: data.comparison }, kind, saved?.snapshotId === snapshot.captureId ? { rendered: saved.view?.rendered } : null);
+    stopWork();
+    draw({ snapshot, result: data.comparison }, work.purpose, saved?.snapshotId === snapshot.captureId ? { rendered: saved.view?.rendered } : null);
   };
-  worker.onerror = () => { if (state.worker === worker) fail('The comparison worker stopped unexpectedly. Refresh to try again.'); };
-  state.timeout = setTimeout(() => { if (state.worker === worker) fail('This comparison exceeded 12 seconds. Split very large or deeply nested documents into smaller files.'); }, 12000);
-  worker.postMessage({ requestId: snapshot.captureId, beforeText: snapshot.before.text, afterText: snapshot.after.text,
+  work.worker.onerror = () => fail('The comparison worker stopped unexpectedly. Refresh to try again.');
+  work.timeout = setTimeout(() => fail('This comparison exceeded 12 seconds. Split very large or deeply nested documents into smaller files.'), 12000);
+  work.worker.postMessage({ requestId: snapshot.captureId, beforeText: snapshot.before.text, afterText: snapshot.after.text,
     previewLimits: previewLimits.worker });
+  update();
+}
+
+function receiveCapture(data) {
+  if (!data || data.type !== 'state' || !Number.isInteger(data.captureId) || data.captureId < capture.id || !['reading', 'ready', 'error'].includes(data.status)) return;
+  const newer = data.captureId > capture.id;
+  if (newer) capture = { id: data.captureId, attemptedSnapshotId: null, work: capture.work };
+  if (newer || data.status === 'reading') beginRead();
+  if (data.status !== 'reading' && capture.work.kind === 'reading') capture.work = { kind: 'idle' };
+  if (screen.kind !== 'stopped') error = data.status === 'error' && typeof data.message === 'string' ? data.message : '';
+  $('#source-label').textContent = data.sourceLabel;
+  if (data.status !== 'reading' && screen.kind !== 'stopped' && data.snapshot && Number.isInteger(data.snapshot.captureId)) {
+    const alreadyGood = data.snapshot.captureId === screen.good?.snapshot.captureId;
+    const drawing = screen.kind === 'candidate' && data.snapshot.captureId === screen.value.snapshot.captureId;
+    if (!alreadyGood && !drawing && data.snapshot.captureId !== capture.attemptedSnapshotId) {
+      capture.attemptedSnapshotId = data.snapshot.captureId;
+      compare(data.snapshot, data.status === 'error' ? 'restoring' : 'candidate');
+    }
+  }
   update();
 }
 
 window.addEventListener('message', ({ data }) => {
   if (data?.type === 'sourceStatus' && Number.isInteger(data.captureId) && ['current', 'changed', 'unknown'].includes(data.status)) {
-    if (!state.sourceStatus || data.captureId >= state.sourceStatus.captureId) state.sourceStatus = data;
+    if (!sourceStatus || data.captureId >= sourceStatus.captureId) sourceStatus = data;
     update();
-    return;
-  }
-  if (!data || data.type !== 'state' || !Number.isInteger(data.captureId) || data.captureId < state.captureId || !['reading', 'ready', 'error'].includes(data.status)) return;
-  const newer = data.captureId > state.captureId;
-  state.captureId = data.captureId;
-  state.reading = data.status === 'reading';
-  if (newer || state.reading) cancelComparison();
-  state.error = state.presentation?.kind === 'failed' ? state.presentation.message : data.status === 'error' && typeof data.message === 'string' ? data.message : '';
-  $('#source-label').textContent = data.sourceLabel;
-  if (!state.reading && state.presentation?.kind !== 'failed' && data.snapshot && Number.isInteger(data.snapshot.captureId)) {
-    const key = `${data.captureId}:${data.snapshot.captureId}`;
-    const alreadyVisible = data.snapshot.captureId === state.shown?.snapshot.captureId;
-    const restoring = data.snapshot.captureId === state.presentation?.snapshot.captureId;
-    if (!alreadyVisible && !restoring && key !== state.attemptKey) {
-      state.attemptKey = key;
-      compare(data.snapshot, data.status === 'error' ? 'restore' : 'candidate');
-    }
-  }
-  update();
+  } else receiveCapture(data);
 });
 
-$('#open-source').addEventListener('click', () => vscode.postMessage({ type: 'openSource' }));
+$('#open-source').addEventListener('click', () => { persist(); vscode.postMessage({ type: 'openSource' }); });
 refresh.addEventListener('click', () => {
-  state.reading = true;
-  cancelComparison();
+  beginRead();
   update();
   vscode.postMessage({ type: 'refresh' });
 });
@@ -242,11 +248,10 @@ comparison.addEventListener('click', (event) => {
   if (link.hasAttribute('href')) vscode.postMessage({ type: 'openExternal', url: link.getAttribute('href') });
 });
 comparison.addEventListener('auxclick', (event) => { if (event.target.closest('a')) event.preventDefault(); });
-let scrollFrame = 0;
 window.addEventListener('scroll', () => {
-  if (!scrollFrame) scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; persist(); });
+  if (!scrollSave) scrollSave = setTimeout(persist, 200);
 }, { passive: true });
 new ResizeObserver(() => document.documentElement.style.setProperty('--chrome-obscured', `${toolbar.getBoundingClientRect().height}px`)).observe(toolbar);
-window.addEventListener('pagehide', () => { persist(); stopWorker(); display.reset(); });
+window.addEventListener('pagehide', () => { persist(); stopWork(); screen = { kind: 'empty' }; display.reset(); });
 update();
 vscode.postMessage({ type: 'ready' });

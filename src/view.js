@@ -1,7 +1,7 @@
 import { partners } from './partners.js';
 import { presentTables } from './tables.js';
 
-export function createComparisonView(container, chrome, { renderDocument, onRendered, onError, batchLimits, chunkRows = 0 } = {}) {
+export function createComparisonView(container, chrome, { renderDocument, onPresented, onViewStateChanged, onError, batchLimits, chunkRows = 0 } = {}) {
   let comparison = null;
   let names = null;
   let current = null;
@@ -50,7 +50,10 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       recordHeight(node, entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height);
     }
     scheduleAlignment();
-    if (current?.mounted) onRendered?.();
+    if (current?.mounted) {
+      current.mounted = false;
+      notifyMounted(current);
+    }
   }));
   const visible = new IntersectionObserver((entries) => {
     let entering = false;
@@ -227,7 +230,7 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       pages: new Map(bookmark?.pages),
       restore: bookmark?.anchor ? { ...bookmark.anchor, passes: 0 } : null,
       position: 0, end: 0, scroll: 0,
-      frame: 0, readyFrame: 0, mounted: false,
+      frame: 0, readyFrame: 0, mounted: false, presented: false,
     };
     views.set(mode, view);
     return view;
@@ -238,14 +241,19 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       view.frame = 0;
       if (view !== current) return;
       const source = view.mode === 'source';
-      const stop = Math.min(view.restore && batchLimits && !source ? Math.max(view.position + 12, view.restore.row) : view.position + (source ? 80 : 12), view.end);
+      const nextRows = view.position + (source ? 80 : 12);
+      const restoreRows = view.restore && batchLimits && !source ? Math.max(nextRows, view.restore.row) : nextRows;
+      const stop = Math.min(restoreRows, view.end);
       const fragment = document.createDocumentFragment();
       const started = batchLimits ? performance.now() : 0;
       let characters = 0;
       while (view.position < stop) {
         const row = view.rows[view.position];
         const content = row.pages ? row.pages[view.pages.get(view.position) || 0] : row;
-        const cost = !batchLimits ? 0 : source ? (content.before?.html.length || 0) + (content.after?.html.length || 0) : content.before.length + content.after.length;
+        let cost = 0;
+        if (batchLimits) cost = source
+          ? (content.before?.html.length || 0) + (content.after?.html.length || 0)
+          : content.before.length + content.after.length;
         if (batchLimits && fragment.childNodes.length && (characters + cost > batchLimits.characters || performance.now() - started >= batchLimits.milliseconds)) break;
         fragment.append(buildRow(row, source, view.position++, view));
         characters += cost;
@@ -274,7 +282,7 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
   }
 
   function notifyMounted(view) {
-    if ((!onRendered && !view.restore) || view !== current || view.mounted || view.readyFrame || view.position < view.end) return;
+    if ((!onPresented && !onViewStateChanged && !view.restore) || view !== current || view.mounted || view.readyFrame || view.position < view.end) return;
     view.readyFrame = requestAnimationFrame(() => attempt(() => {
       view.readyFrame = requestAnimationFrame(() => attempt(() => {
         view.readyFrame = 0;
@@ -293,8 +301,12 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
           return;
         }
         view.mounted = true;
+        const firstPresentation = !view.presented;
+        view.presented = true;
+        if (firstPresentation) onPresented?.();
+        else onViewStateChanged?.();
+        if (view !== current) return;
         bookmarks = getState();
-        onRendered?.();
       }));
     }));
   }
@@ -305,7 +317,10 @@ export function createComparisonView(container, chrome, { renderDocument, onRend
       incremental.disconnect();
       view.more.remove();
       view.mounted = false;
-      view.end = Math.min(Math.max(view.position + (view.mode === 'source' ? 400 : 120), view.restore ? view.restore.row + (view.mode === 'source' ? 400 : 120) : 0), view.rows.length);
+      const windowSize = view.mode === 'source' ? 400 : 120;
+      const nextEnd = view.position + windowSize;
+      const restoreEnd = view.restore ? view.restore.row + windowSize : 0;
+      view.end = Math.min(Math.max(nextEnd, restoreEnd), view.rows.length);
       step(view);
     });
   }
