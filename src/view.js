@@ -273,7 +273,8 @@ export function createComparisonView(container, chrome, { renderDocument, onPres
   }
 
   function scheduleSettlement(view) {
-    if ((!onPresented && !onViewStateChanged && !view.restore) || view !== current || view.reported || view.readyFrame || view.position < view.end) return;
+    if ((!onPresented && !onViewStateChanged && !view.restore) ||
+        view !== current || view.reported || view.readyFrame || view.position < view.end) return;
     view.readyFrame = requestAnimationFrame(() => attempt(() => {
       view.readyFrame = requestAnimationFrame(() => attempt(() => {
         view.readyFrame = 0;

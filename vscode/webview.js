@@ -19,7 +19,14 @@ let scrollSave = 0;
 const display = createComparisonView(comparison, { scrollTo(target) {
   const top = typeof target === 'number' ? target : window.scrollY + target.getBoundingClientRect().top - toolbar.getBoundingClientRect().height - 12;
   window.scrollTo({ top, behavior: 'instant' });
-} }, { renderDocument, onPresented: commitDraw, onViewStateChanged: persist, onError: failDraw, batchLimits: previewLimits.batch, chunkRows: 64 });
+} }, {
+  renderDocument,
+  onPresented: commitDraw,
+  onViewStateChanged: persist,
+  onError: failDraw,
+  batchLimits: previewLimits.batch,
+  chunkRows: 64,
+});
 
 function persist(bookmark) {
   clearTimeout(scrollSave);
@@ -212,7 +219,8 @@ function compare(snapshot, purpose) {
 }
 
 function receiveCapture(data) {
-  if (!data || data.type !== 'state' || !Number.isInteger(data.captureId) || data.captureId < capture.id || !['reading', 'ready', 'error'].includes(data.status)) return;
+  if (!data || data.type !== 'state' || !Number.isInteger(data.captureId) ||
+      data.captureId < capture.id || !['reading', 'ready', 'error'].includes(data.status)) return;
   const newer = data.captureId > capture.id;
   if (newer || data.status === 'reading') beginCapture(data.status);
   if (newer) {
@@ -222,7 +230,8 @@ function receiveCapture(data) {
   if (data.status !== 'reading' && capture.work.kind === 'reading') capture.work = { kind: 'idle' };
   if (screen.kind !== 'stopped') error = data.status === 'error' && typeof data.message === 'string' ? data.message : '';
   $('#source-label').textContent = data.sourceLabel;
-  if (data.status !== 'reading' && screen.kind !== 'stopped' && data.snapshot && Number.isInteger(data.snapshot.captureId)) {
+  if (data.status !== 'reading' && screen.kind !== 'stopped' &&
+      data.snapshot && Number.isInteger(data.snapshot.captureId)) {
     const alreadyGood = data.snapshot.captureId === screen.good?.snapshot.captureId;
     const drawing = data.snapshot.captureId === screen.value?.snapshot.captureId;
     if (!alreadyGood && !drawing && data.snapshot.captureId !== capture.attemptedSnapshotId) {
@@ -234,7 +243,8 @@ function receiveCapture(data) {
 }
 
 window.addEventListener('message', ({ data }) => {
-  if (data?.type === 'sourceStatus' && Number.isInteger(data.captureId) && ['current', 'changed', 'unknown'].includes(data.status)) {
+  if (data?.type === 'sourceStatus' && Number.isInteger(data.captureId) &&
+      ['current', 'changed', 'unknown'].includes(data.status)) {
     if (!sourceStatus || data.captureId >= sourceStatus.captureId) sourceStatus = data;
     update();
   } else receiveCapture(data);
