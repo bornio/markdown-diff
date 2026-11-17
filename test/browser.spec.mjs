@@ -154,6 +154,28 @@ test('reset cancels shared-view notifications and presentation can replace its o
   expect(events.events.filter(event => event.startsWith('changed First'))).toEqual([]);
 });
 
+test('reset discards the view without measuring discarded rows', async ({ page }) => {
+  await routeViewModules(page);
+  const measured = await page.evaluate(async () => {
+    const { createComparisonView } = await import('./lifecycle-view/view.js');
+    const container = document.createElement('section');
+    document.body.replaceChildren(container);
+    let presented;
+    const ready = new Promise(resolve => { presented = resolve; });
+    const display = createComparisonView(container, { scrollTo() {} }, { onPresented: presented });
+    display.reset({ rows: [{ kind: 'same', before: '<p>Before</p>', after: '<p>After</p>' }], source: { rows: [] } }, { before: 'Before', after: 'After' });
+    display.show('rendered');
+    await ready;
+    const row = container.querySelector('.pair-row');
+    const measure = row.getBoundingClientRect.bind(row);
+    let reads = 0;
+    row.getBoundingClientRect = () => { reads++; return measure(); };
+    display.reset();
+    return { reads, content: container.textContent };
+  });
+  expect(measured).toEqual({ reads: 0, content: '' });
+});
+
 test('file boundaries, status visibility, and actual Source survive success and read errors', async ({ page }) => {
   const status = page.locator('#status');
   await expect(status).toHaveText('Ready when you are');

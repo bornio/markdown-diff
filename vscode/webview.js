@@ -11,7 +11,7 @@ const toolbar = $('.extension-toolbar');
 const notice = $('#notice');
 const refresh = $('#refresh');
 const saved = vscode.getState();
-let capture = { id: 0, attemptedSnapshotId: null, work: { kind: 'reading' } };
+const capture = { id: 0, attemptedSnapshotId: null, work: { kind: 'reading' } };
 let screen = { kind: 'empty' };
 let sourceStatus = null;
 let error = '';
@@ -158,6 +158,11 @@ function terminal(message) {
   $('#before-label').textContent = $('#after-label').textContent = '';
 }
 
+function rollback(good) {
+  if (good) draw(good, 'restoring');
+  else { screen = { kind: 'empty' }; display.reset(); }
+}
+
 function failDraw(cause) {
   const failed = screen;
   error = `The comparison could not be displayed. ${sentence(cause instanceof Error ? cause.message : 'Refresh to try again')}`;
@@ -166,32 +171,28 @@ function failDraw(cause) {
   } else {
     const snapshot = failed.kind === 'candidate' ? failed.value.snapshot : failed.good?.snapshot;
     if (snapshot) vscode.postMessage({ type: 'comparisonFailed', captureId: snapshot.captureId, message: error });
-    if (failed.good) draw(failed.good, 'restoring');
-    else { screen = { kind: 'empty' }; display.reset(); }
+    rollback(failed.good);
   }
   update();
 }
 
-function beginRead() {
+function beginCapture(status = 'reading') {
   stopWork();
-  capture.work = { kind: 'reading' };
+  capture.work = { kind: status === 'reading' ? 'reading' : 'idle' };
   if (screen.kind === 'stopped') screen = { kind: 'empty' };
-  else if (screen.kind === 'candidate') {
-    if (screen.good) draw(screen.good, 'restoring');
-    else { screen = { kind: 'empty' }; display.reset(); }
-  }
+  else if (screen.kind === 'candidate') rollback(screen.good);
 }
 
 function compare(snapshot, purpose) {
   stopWork();
-  const work = { kind: 'computing', snapshot, purpose, worker: null, timeout: null };
+  const work = { kind: 'computing', worker: null, timeout: null };
   capture.work = work;
   const fail = (message) => {
     if (capture.work !== work) return;
     stopWork();
     error = sentence(message);
-    if (work.purpose === 'candidate') vscode.postMessage({ type: 'comparisonFailed', captureId: work.snapshot.captureId, message: error });
-    if (!screen.good && work.purpose === 'restoring') terminal(`The previous preview could not be restored. ${error} Open the source comparison or Refresh to try again.`);
+    if (purpose === 'candidate') vscode.postMessage({ type: 'comparisonFailed', captureId: snapshot.captureId, message: error });
+    if (!screen.good && purpose === 'restoring') terminal(`The previous preview could not be restored. ${error} Open the source comparison or Refresh to try again.`);
     update();
   };
   try { work.worker = new ComparisonWorker(); }
@@ -201,7 +202,7 @@ function compare(snapshot, purpose) {
     if (data.status === 'error' && typeof data.message === 'string') { fail(data.message); return; }
     if (data.status !== 'ready' || !data.comparison) { fail('The comparison worker returned an invalid result. Refresh to try again.'); return; }
     stopWork();
-    draw({ snapshot, result: data.comparison }, work.purpose, saved?.snapshotId === snapshot.captureId ? saved.view?.rendered : null);
+    draw({ snapshot, result: data.comparison }, purpose, saved?.snapshotId === snapshot.captureId ? saved.view?.rendered : null);
   };
   work.worker.onerror = () => fail('The comparison worker stopped unexpectedly. Refresh to try again.');
   work.timeout = setTimeout(() => fail('This comparison exceeded 12 seconds. Split very large or deeply nested documents into smaller files.'), 12000);
@@ -213,8 +214,11 @@ function compare(snapshot, purpose) {
 function receiveCapture(data) {
   if (!data || data.type !== 'state' || !Number.isInteger(data.captureId) || data.captureId < capture.id || !['reading', 'ready', 'error'].includes(data.status)) return;
   const newer = data.captureId > capture.id;
-  if (newer) capture = { id: data.captureId, attemptedSnapshotId: null, work: capture.work };
-  if (newer || data.status === 'reading') beginRead();
+  if (newer || data.status === 'reading') beginCapture(data.status);
+  if (newer) {
+    capture.id = data.captureId;
+    capture.attemptedSnapshotId = null;
+  }
   if (data.status !== 'reading' && capture.work.kind === 'reading') capture.work = { kind: 'idle' };
   if (screen.kind !== 'stopped') error = data.status === 'error' && typeof data.message === 'string' ? data.message : '';
   $('#source-label').textContent = data.sourceLabel;
@@ -238,7 +242,7 @@ window.addEventListener('message', ({ data }) => {
 
 $('#open-source').addEventListener('click', () => { persist(); vscode.postMessage({ type: 'openSource' }); });
 refresh.addEventListener('click', () => {
-  beginRead();
+  beginCapture();
   update();
   vscode.postMessage({ type: 'refresh' });
 });

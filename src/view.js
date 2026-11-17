@@ -40,9 +40,9 @@ export function createComparisonView(container, chrome, { renderDocument, onPres
       recordHeight(node, entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height);
     }
     scheduleAlignment();
-    if (current?.mounted) {
-      current.mounted = false;
-      notifyMounted(current);
+    if (current?.reported) {
+      current.reported = false;
+      scheduleSettlement(current);
     }
   }));
   const visible = new IntersectionObserver((entries) => {
@@ -190,10 +190,10 @@ export function createComparisonView(container, chrome, { renderDocument, onPres
         fill();
         if (page) view.pages.set(index, page);
         else view.pages.delete(index);
-        view.mounted = false;
+        view.reported = false;
         scheduleAlignment(true);
         chrome.scrollTo(pager);
-        notifyMounted(view);
+        scheduleSettlement(view);
       });
       back.onclick = () => turn(-1);
       next.onclick = () => turn(1);
@@ -221,7 +221,7 @@ export function createComparisonView(container, chrome, { renderDocument, onPres
       restore: bookmark.anchor ? { ...bookmark.anchor, passes: 0 } : null,
       settled: { anchor: bookmark.anchor || { row: 0, offset: 0 }, pages: bookmark.pages },
       position: 0, end: 0, scroll: 0,
-      frame: 0, readyFrame: 0, mounted: false, presented: false,
+      frame: 0, readyFrame: 0, reported: false, presented: false,
     };
     views.set(mode, view);
     return view;
@@ -268,17 +268,17 @@ export function createComparisonView(container, chrome, { renderDocument, onPres
         incremental.observe(view.more);
       }
       scheduleAlignment();
-      notifyMounted(view);
+      scheduleSettlement(view);
     });
   }
 
-  function notifyMounted(view) {
-    if ((!onPresented && !onViewStateChanged && !view.restore) || view !== current || view.mounted || view.readyFrame || view.position < view.end) return;
+  function scheduleSettlement(view) {
+    if ((!onPresented && !onViewStateChanged && !view.restore) || view !== current || view.reported || view.readyFrame || view.position < view.end) return;
     view.readyFrame = requestAnimationFrame(() => attempt(() => {
       view.readyFrame = requestAnimationFrame(() => attempt(() => {
         view.readyFrame = 0;
-        if (view !== current || view.mounted || view.position < view.end) return;
-        if (alignmentFrame) { notifyMounted(view); return; }
+        if (view !== current || view.reported || view.position < view.end) return;
+        if (alignmentFrame) { scheduleSettlement(view); return; }
         if (view.restore) {
           const anchor = view.restore;
           const row = view.chunkSize ? view.root.children[Math.floor(anchor.row / view.chunkSize)]?.children[anchor.row % view.chunkSize] : view.root.children[anchor.row];
@@ -288,10 +288,10 @@ export function createComparisonView(container, chrome, { renderDocument, onPres
             chrome.scrollTo(window.scrollY + delta);
             scheduleAlignment(true);
           } else view.restore = null;
-          notifyMounted(view);
+          scheduleSettlement(view);
           return;
         }
-        view.mounted = true;
+        view.reported = true;
         const firstPresentation = !view.presented;
         view.presented = true;
         view.settled = { anchor: readAnchor(view), pages: [...view.pages] };
@@ -306,7 +306,7 @@ export function createComparisonView(container, chrome, { renderDocument, onPres
       if (!view || view !== current || view.frame || view.position >= view.rows.length) return;
       incremental.disconnect();
       view.more.remove();
-      view.mounted = false;
+      view.reported = false;
       const windowSize = view.mode === 'source' ? 400 : 120;
       const nextEnd = view.position + windowSize;
       const restoreEnd = view.restore ? view.restore.row + windowSize : 0;
@@ -351,7 +351,7 @@ export function createComparisonView(container, chrome, { renderDocument, onPres
       else if (!view.position) mountNext(view);
       else if (view.position < view.rows.length) incremental.observe(view.more);
       scheduleAlignment(true);
-      notifyMounted(view);
+      scheduleSettlement(view);
     });
   }
 
@@ -395,7 +395,6 @@ export function createComparisonView(container, chrome, { renderDocument, onPres
   }
 
   function readAnchor(view) {
-    if (view.restore) return view.settled.anchor;
     const bounds = view.root.getBoundingClientRect();
     const obscured = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--chrome-obscured')) || 0;
     const y = Math.min(innerHeight - 1, Math.max(obscured, bounds.top) + 1);
@@ -407,7 +406,7 @@ export function createComparisonView(container, chrome, { renderDocument, onPres
   }
 
   function getState() {
-    return current ? { anchor: readAnchor(current), pages: current.settled.pages } : null;
+    return { anchor: readAnchor(current), pages: current.settled.pages };
   }
 
   function readBookmark(saved, rows) {
@@ -426,7 +425,7 @@ export function createComparisonView(container, chrome, { renderDocument, onPres
   }
 
   function reset(result = null, filenames = null) {
-    pause();
+    halt();
     resized.disconnect();
     visible.disconnect();
     nearTargets.clear();
