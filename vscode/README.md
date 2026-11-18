@@ -2,6 +2,8 @@
 
 Read Markdown changes as rendered tables, lists, headings, and text. The extension uses the comparison already open in VS Code.
 
+![Rendered Markdown comparison showing edits in a table cell, a list item, and a JavaScript code block](/vscode/images/rendered-comparison.png)
+
 ## Install
 
 Requires desktop **Visual Studio Code 1.85 or newer**.
@@ -23,6 +25,8 @@ For manual/offline installation, [download the VSIX](https://github.com/bornio/m
 1. Open a Markdown text comparison from Source Control, or use **Select for Compare** and **Compare with Selected** in Explorer.
 2. Choose **Markdown Diff: Render this comparison** from the Command Palette or the preview button in the diff editor title.
 3. Choose **Open live Source diff** to return to the original native comparison. Edit in VS Code, then choose **Refresh** in the preview.
+
+![The same edits in the native VS Code diff, with the Render this comparison toolbar action visible](/vscode/images/native-source-diff.png)
 
 The preview is a snapshot. Refresh reads the same original and modified document URIs again, including unsaved editor text. It preserves the baseline selected by VS Code. It does not select HEAD, stage changes, write files, or follow another tab. The original comparison's label appears above both sides. Unsaved sides are marked. Reopening the same captured snapshot restores its logical reading position and page. Refresh or a new command capture starts a new view.
 
